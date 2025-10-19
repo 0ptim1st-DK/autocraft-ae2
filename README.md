@@ -67,7 +67,7 @@ Crafting CPU в ME системе
 #### Способ 1: Через Pastebin (рекомендуется):
 
 ```
-pastebin run "yUY2kY0H"
+pastebin run yUY2kY0H
 ```
 
 #### Способ 2: Через установщик:
