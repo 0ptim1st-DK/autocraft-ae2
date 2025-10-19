@@ -1,5 +1,3 @@
-[file name]: ac5.lua
-[file content begin]
 local component = require("component")
 local event = require("event")
 local serialization = require("serialization")
@@ -1158,4 +1156,3 @@ print("📋 История крафтов: " .. (meKnowledge.craftHistory and #m
 os.sleep(2)
 
 mainMenu()
-[file content end]
