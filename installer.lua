@@ -1,5 +1,3 @@
-[file name]: installer.lua
-[file content begin]
 local component = require("component")
 local internet = require("internet")
 local filesystem = require("filesystem")
@@ -27,10 +25,14 @@ local function downloadFile(filename, path)
     
     local data = ""
     for chunk in response do
-        data = data .. chunk
+        data = data .. tostring(chunk)
     end
     
-    if #data < 100 then
+    if data:match("<!DOCTYPE") or data:match("<html") or data:match("404") then
+        return false, "Получена HTML страница вместо файла"
+    end
+    
+    if #data < 50 then
         return false, "Файл слишком маленький, возможно ошибка загрузки"
     end
     
@@ -39,6 +41,14 @@ local function downloadFile(filename, path)
     if file then
         file:write(data)
         file:close()
+        
+        if filename:match("%.lua$") then
+            local check = loadfile(file_path)
+            if not check then
+                return false, "Ошибка синтаксиса в скачанном файле"
+            end
+        end
+        
         return true
     else
         return false, "Ошибка записи файла: " .. file_path
@@ -56,7 +66,7 @@ lua ac5.lua
     if file then
         file:write(launcher)
         file:close()
-        os.execute("chmod +x /home/autocraft")
+        os.execute("chmod +x /home/autocraft 2>/dev/null")
         return true
     end
     return false
@@ -70,13 +80,14 @@ local function checkRequirements()
         return false
     end
     
-    if not component.isAvailable("me_interface") then
-        print("⚠️  ME интерфейс не найден")
-        print("   Программа установится, но для работы нужен ME интерфейс")
+    if not component.isAvailable("me_controller") and not component.isAvailable("me_interface") then
+        print("⚠️  ME контроллер или интерфейс не найден")
+        print("   Программа установится, но для работы нужна ME система")
     end
     
-    if filesystem.spaceTotal("/home") < 100000 then
-        print("⚠️  Мало места на диске, но установка продолжится")
+    local freeSpace = filesystem.spaceTotal("/home") or 0
+    if freeSpace < 100000 then
+        print("⚠️  Мало места на диске (" .. freeSpace .. " байт), но установка продолжится")
     end
     
     return true
@@ -103,7 +114,12 @@ local function installProgram()
     end
     
     print("3. Загрузка дополнительных файлов...")
-    downloadFile("installer.lua") 
+    local success2, err2 = downloadFile("installer.lua")
+    if success2 then
+        print("   ✅ installer.lua загружен")
+    else
+        print("   ⚠️  Не удалось загрузить installer.lua: " .. (err2 or "неизвестная ошибка"))
+    end
     
     return true
 end
@@ -119,10 +135,10 @@ local function showInstructions()
     print("📚 Исходный код: https://github.com/" .. GITHUB_USERNAME .. "/autocraft-ae2")
     print("")
     print("💡 ПЕРВЫЙ ЗАПУСК:")
-    print("   1. Запустите программу: autocraft при помощи ввода в коммандную строку "" ac5.lua """)
-    print("   2. Выполните 'Анализ ME системы' (пункт 6) Внимание! это запустит все доступные автокрафты по порядку!")
+    print("   1. Запустите программу: ac5.lua")
+    print("   2. Выполните 'Анализ ME системы' (пункт 6) осторожно, требует много памяти при большом количестве актокрафтов")
     print("   3. Добавьте нужные автокрафты (пункт 3)")
-    print("   4. Запустите автокрафт (пункт 1) систему автоподдержания определённого числа предметов")
+    print("   4. Запустите автокрафт систему")
     print("")
     print("🔄 ОБНОВЛЕНИЕ:")
     print("   Для обновления запустите: lua /home/installer.lua update")
@@ -162,7 +178,7 @@ local function showMenu()
     print("3 - ℹ️  Показать инструкции")
     print("4 - 🚪 Выход")
     print("")
-    print("Ваш выбор:")
+    write("Ваш выбор: ")
 end
 
 local function main()
@@ -219,4 +235,3 @@ if not success then
     print("❌ Критическая ошибка: " .. tostring(err))
     print("Попробуйте перезапустить установщик")
 end
-[file content end]
