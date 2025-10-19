@@ -68,10 +68,9 @@ local function getStoragePath(filename)
     end
 end
 
--- Функция оптимизации памяти
+-- Функция оптимизации памяти (без collectgarbage)
 local function optimizeMemory()
-    collectgarbage("collect")
-    
+    -- В OpenComputers нет collectgarbage, поэтому просто ограничиваем данные
     -- Очищаем историю, если она слишком большая
     if meKnowledge.craftHistory and #meKnowledge.craftHistory > 100 then
         local newHistory = {}
@@ -289,9 +288,8 @@ local function analyzeMESystem()
                     table.insert(meKnowledge.items, itemInfo)
                 end
                 
-                -- Периодически сохраняем и чистим память
+                -- Даем системе передохнуть вместо сборки мусора
                 if i % 50 == 0 then
-                    collectgarbage()
                     os.sleep(0.1)
                 end
             end
@@ -340,9 +338,9 @@ local function analyzeMESystem()
                 
                 table.insert(meKnowledge.craftables, craftableInfo)
                 
-                -- Оптимизация памяти
+                -- Даем системе передохнуть
                 if i % 50 == 0 then
-                    collectgarbage()
+                    os.sleep(0.1)
                 end
             end
         end
