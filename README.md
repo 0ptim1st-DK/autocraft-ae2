@@ -73,15 +73,15 @@ pastebin run yUY2kY0H
 #### Способ 2: Через установщик:
 
 ```
-wget https://raw.githubusercontent.com/YOUR_USERNAME/autocraft-ae2/main/installer.lua /home/installer.lua
-lua /home/installer.lua
+wget https://raw.githubusercontent.com/0ptim1st-DK/autocraft-ae2/main/installer.lua /home/installer.lua
+installer.lua
 ```
 
 #### Способ 3: Прямая загрузка
 
 ```
-wget https://raw.githubusercontent.com/YOUR_USERNAME/autocraft-ae2/main/ac5.lua /home/ac5.lua
-lua /home/ac5.lua
+wget https://raw.githubusercontent.com/0ptim1st-DK/autocraft-ae2/main/ac5.lua /home/ac5.lua
+ac5.lua
 ```
 
 ### Первый запуск
