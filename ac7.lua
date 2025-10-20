@@ -14,14 +14,6 @@ local STORAGE_CONFIG = {
     useExternalStorage = false
 }
 
--- Конфигурация автозапуска
-local AUTOSTART_CONFIG = {
-    enabled = false,
-    configFile = "/home/autostart_config.dat",
-    delay = 5,  -- Задержка перед автозапуском в секундах
-    startupFile = "/home/startup.lua"  -- Файл автозапуска OpenOS
-}
-
 if not component.isAvailable("me_interface") then
   print("Ошибка: ME интерфейс не найден!")
   print("Убедитесь что ME интерфейс подключен к компьютеру")
@@ -47,163 +39,11 @@ local meKnowledge = {
     researchDB = {}      
 }
 
--- Функции для работы с автозапуском
-local function loadAutostartConfig()
-    local file = io.open(AUTOSTART_CONFIG.configFile, "r")
-    if file then
-        local data = file:read("*a")
-        file:close()
-        local success, loaded = pcall(serialization.unserialize, data)
-        if success and loaded then
-            AUTOSTART_CONFIG.enabled = loaded.enabled or false
-            AUTOSTART_CONFIG.delay = loaded.delay or 5
-            return true
-        end
-    end
-    return false
-end
-
-local function saveAutostartConfig()
-    local file = io.open(AUTOSTART_CONFIG.configFile, "w")
-    if file then
-        file:write(serialization.serialize({
-            enabled = AUTOSTART_CONFIG.enabled,
-            delay = AUTOSTART_CONFIG.delay
-        }))
-        file:close()
-        return true
-    end
-    return false
-end
-
--- Функция для создания/удаления файла автозапуска
-local function setupAutostartFile()
-    if AUTOSTART_CONFIG.enabled then
-        -- Создаем файл автозапуска
-        local startupFile = io.open(AUTOSTART_CONFIG.startupFile, "w")
-        if startupFile then
-            startupFile:write([[
--- Автозапуск системы автокрафта
-print("🤖 Загрузка системы автокрафта...")
-os.sleep(]] .. AUTOSTART_CONFIG.delay .. [[)
-
--- Проверяем наличие ME интерфейса
-local component = require("component")
-if not component.isAvailable("me_interface") then
-    print("❌ Ошибка: ME интерфейс не найден!")
-    print("Автозапуск отменен.")
-    return
-end
-
--- Запускаем основную программу
-local shell = require("shell")
-shell.execute("/home/ac7.lua")
-]])
-            startupFile:close()
-            print("✅ Файл автозапуска создан: " .. AUTOSTART_CONFIG.startupFile)
-            return true
-        else
-            print("❌ Ошибка создания файла автозапуска")
-            return false
-        end
-    else
-        -- Удаляем файл автозапуска если он существует
-        if os.remove(AUTOSTART_CONFIG.startupFile) then
-            print("✅ Файл автозапуска удален")
-        else
-            -- Если файла не было, это нормально
-            print("✅ Автозапуск отключен")
-        end
-        return true
-    end
-end
-
-local function toggleAutostart()
-    AUTOSTART_CONFIG.enabled = not AUTOSTART_CONFIG.enabled
-    if saveAutostartConfig() then
-        if setupAutostartFile() then
-            if AUTOSTART_CONFIG.enabled then
-                print("✅ Автозапуск ВКЛЮЧЕН")
-                print("📁 Файл автозапуска создан: " .. AUTOSTART_CONFIG.startupFile)
-                print("⏰ Задержка: " .. AUTOSTART_CONFIG.delay .. " секунд")
-            else
-                print("✅ Автозапуск ВЫКЛЮЧЕН")
-            end
-        else
-            print("❌ Ошибка настройки автозапуска")
-        end
-    else
-        print("❌ Ошибка сохранения настроек автозапуска")
-    end
-    os.sleep(2)
-end
-
-local function setAutostartDelay()
-    term.clear()
-    print("=== ⏰ НАСТРОЙКА ЗАДЕРЖКИ АВТОЗАПУСКА ===")
-    print("Текущая задержка: " .. AUTOSTART_CONFIG.delay .. " секунд")
-    print("Введите новую задержку (в секундах, минимум 3):")
-    
-    local input = io.read()
-    local newDelay = tonumber(input)
-    
-    if newDelay and newDelay >= 3 then
-        AUTOSTART_CONFIG.delay = newDelay
-        if saveAutostartConfig() then
-            if AUTOSTART_CONFIG.enabled then
-                setupAutostartFile()  -- Обновляем файл автозапуска
-            end
-            print("✅ Задержка установлена: " .. newDelay .. " секунд")
-        else
-            print("❌ Ошибка сохранения настроек")
-        end
-    else
-        print("❌ Неверное значение! Минимум 3 секунды.")
-    end
-    os.sleep(2)
-end
-
-local function showAutostartStatus()
-    term.clear()
-    print("=== 🤖 СТАТУС АВТОЗАПУСКА ===")
-    print("Статус: " .. (AUTOSTART_CONFIG.enabled and "🟢 ВКЛЮЧЕН" or "🔴 ВЫКЛЮЧЕН"))
-    print("Задержка: " .. AUTOSTART_CONFIG.delay .. " секунд")
-    
-    -- Проверяем существование файла автозапуска
-    local startupFile = io.open(AUTOSTART_CONFIG.startupFile, "r")
-    if startupFile then
-        startupFile:close()
-        print("📁 Файл автозапуска: 🟢 СУЩЕСТВУЕТ")
-    else
-        print("📁 Файл автозапуска: 🔴 ОТСУТСТВУЕТ")
-    end
-    
-    print("\nПри включенном автозапуске система будет:")
-    print("1. Автоматически запускаться при включении компьютера")
-    print("2. Ждать " .. AUTOSTART_CONFIG.delay .. " секунд перед запуском")
-    print("3. Автоматически начинать автокрафт")
-    print("\nФайл автозапуска: " .. AUTOSTART_CONFIG.startupFile)
-    print("\nНажмите Enter для продолжения...")
-    io.read()
-end
-
--- Функция автозапуска (для немедленного запуска в текущей сессии)
-local function autostartSequence()
-    if not AUTOSTART_CONFIG.enabled then
-        return false
-    end
-    
-    print("🤖 Запуск в режиме автозапуска...")
-    print("⏰ Ожидание " .. AUTOSTART_CONFIG.delay .. " секунд перед стартом...")
-    
-    -- Обратный отсчет
-    for i = AUTOSTART_CONFIG.delay, 1, -1 do
-        print("Старт через: " .. i .. " сек...")
-        os.sleep(1)
-    end
-    
-    print("🚀 Запуск автокрафта...")
-    return true
+-- Функция подтверждения действия
+local function confirmAction(actionText)
+    print("\n" .. actionText .. " (y/n):")
+    local input = io.read():lower()
+    return (input == "y" or input == "yes" or input == "да")
 end
 
 -- Функция инициализации внешнего хранилища
@@ -472,18 +312,26 @@ local function showPaginated(data, title, itemsPerPage)
     end
 end
 
--- ОПТИМИЗИРОВАННАЯ функция анализа ME системы
+-- ОБНОВЛЕННАЯ функция анализа ME системы с очисткой данных
 local function analyzeMESystem()
+    if not confirmAction("Вы уверены, что хотите выполнить анализ ME системы? Это может занять некоторое время.") then
+        print("❌ Анализ отменен")
+        return
+    end
+    
     print("🔍 Анализ ME системы...")
     initExternalStorage()
     optimizeMemory()
     
-    if not meKnowledge.items then meKnowledge.items = {} end
-    if not meKnowledge.craftables then meKnowledge.craftables = {} end
+    -- ОЧИСТКА ДАННЫХ ПЕРЕД НОВЫМ АНАЛИЗОМ
+    meKnowledge.items = {}
+    meKnowledge.craftables = {}
+    meKnowledge.patterns = {}
+    
     if not meKnowledge.cpus then meKnowledge.cpus = {} end
-    if not meKnowledge.patterns then meKnowledge.patterns = {} end
     if not meKnowledge.craftTimes then meKnowledge.craftTimes = {} end
     if not meKnowledge.craftHistory then meKnowledge.craftHistory = {} end
+    if not meKnowledge.researchDB then meKnowledge.researchDB = {} end
     
     -- Анализ предметов по чанкам
     local success, items = pcall(me.getItemsInNetwork)
@@ -598,8 +446,13 @@ local function analyzeMESystem()
     end
 end
 
--- Остальные функции остаются без изменений
+-- ОБНОВЛЕННАЯ функция исследования всех крафтов с подтверждением
 local function researchAllCrafts()
+    if not confirmAction("Вы уверены, что хотите исследовать все крафты? Это может занять много времени.") then
+        print("❌ Исследование отменено")
+        return
+    end
+    
     print("🔬 Интеллектуальное исследование всех крафтов...")
     
     local success, craftables = pcall(me.getCraftables)
@@ -679,7 +532,13 @@ local function getItemInfo(itemID)
     return nil
 end
 
+-- ОБНОВЛЕННАЯ функция измерения времени крафта с подтверждением
 local function measureCraftTime(itemID, craftName, craftableIndex)
+    if not confirmAction("Измерение времени крафта создаст 3 предмета. Продолжить?") then
+        print("❌ Измерение отменено")
+        return nil
+    end
+    
     print("⏱️ Измерение времени крафта для: " .. craftName)
     
     local success, craftables = pcall(me.getCraftables)
@@ -868,8 +727,12 @@ local function monitorActiveCrafts()
     end
 end
 
+-- ОБНОВЛЕННАЯ функция переключения мониторинга с подтверждением
 local function toggleCraftMonitoring()
     if monitoring then
+        if not confirmAction("Вы уверены, что хотите остановить мониторинг крафтов?") then
+            return
+        end
         monitoring = false
         if monitorThread then
             monitorThread:join()
@@ -877,6 +740,9 @@ local function toggleCraftMonitoring()
         end
         print("🛑 Мониторинг крафтов остановлен")
     else
+        if not confirmAction("Запустить мониторинг крафтов?") then
+            return
+        end
         monitoring = true
         monitorThread = thread.create(monitorActiveCrafts)
         print("🎯 Мониторинг крафтов запущен")
@@ -1125,8 +991,13 @@ local function waitForCraft(itemID, targetAmount, craftName)
     return false
 end
 
--- ОБНОВЛЕННАЯ функция основного цикла крафта
+-- ОБНОВЛЕННАЯ функция основного цикла крафта с подтверждением
 local function craftLoop()
+    if not confirmAction("Запустить автокрафт?") then
+        print("❌ Запуск отменен")
+        return
+    end
+    
     print("🚀 Запуск умного автокрафта...")
     
     while running do
@@ -1249,7 +1120,7 @@ local function showAvailableCPUs()
     end
 end
 
--- ОБНОВЛЕННАЯ функция добавления автокрафта с поддержкой нескольких ЦП
+-- ОБНОВЛЕННАЯ функция добавления автокрафта с подтверждением
 local function addAutoCraft()
     term.clear()
     print("=== ➕ ДОБАВЛЕНИЕ АВТОКРАФТА ===")
@@ -1408,6 +1279,7 @@ local function viewCraftDB()
     showPaginated(dataToShow, "📊 БАЗА АВТОКРАФТОВ", 5)
 end
 
+-- ОБНОВЛЕННАЯ функция удаления автокрафта с подтверждением
 local function removeAutoCraft()
     term.clear()
     print("=== ❌ УДАЛЕНИЕ АВТОКРАФТА ===")
@@ -1429,6 +1301,12 @@ local function removeAutoCraft()
     local craftName = io.read():gsub("^%s*(.-)%s*$", "%1")
     
     if craftDB[craftName] then
+        if not confirmAction("Вы уверены, что хотите удалить автокрафт '" .. craftName .. "'?") then
+            print("❌ Удаление отменено")
+            os.sleep(2)
+            return
+        end
+        
         craftDB[craftName] = nil
         if saveConfig() then
             print("✅ Удалено!")
@@ -1441,81 +1319,24 @@ local function removeAutoCraft()
     os.sleep(2)
 end
 
--- НОВОЕ меню управления автозапуском
-local function autostartMenu()
-    while true do
-        term.clear()
-        print("=== 🤖 УПРАВЛЕНИЕ АВТОЗАПУСКОМ ===")
-        print("Статус: " .. (AUTOSTART_CONFIG.enabled and "🟢 ВКЛЮЧЕН" or "🔴 ВЫКЛЮЧЕН"))
-        print("Задержка: " .. AUTOSTART_CONFIG.delay .. " секунд")
-        
-        -- Проверяем существование файла автозапуска
-        local startupFile = io.open(AUTOSTART_CONFIG.startupFile, "r")
-        if startupFile then
-            startupFile:close()
-            print("📁 Файл автозапуска: 🟢 СУЩЕСТВУЕТ")
-        else
-            print("📁 Файл автозапуска: 🔴 ОТСУТСТВУЕТ")
-        end
-        
-        print("\n1 - " .. (AUTOSTART_CONFIG.enabled and "🔴 Выключить" or "🟢 Включить") .. " автозапуск")
-        print("2 - ⏰ Настроить задержку")
-        print("3 - 📊 Показать статус")
-        print("4 - 🔧 Принудительно создать файл автозапуска")
-        print("5 - 🗑️  Принудительно удалить файл автозапуска")
-        print("6 - ↩️ Назад в главное меню")
-        print("\nВыберите действие:")
-        
-        local choice = io.read()
-        
-        if choice == "1" then
-            toggleAutostart()
-        elseif choice == "2" then
-            setAutostartDelay()
-        elseif choice == "3" then
-            showAutostartStatus()
-        elseif choice == "4" then
-            if setupAutostartFile() then
-                print("✅ Файл автозапуска создан!")
-            else
-                print("❌ Ошибка создания файла автозапуска")
-            end
-            os.sleep(2)
-        elseif choice == "5" then
-            if os.remove(AUTOSTART_CONFIG.startupFile) then
-                print("✅ Файл автозапуска удален!")
-            else
-                print("✅ Файл автозапуска не существует или уже удален")
-            end
-            os.sleep(2)
-        elseif choice == "6" then
-            break
-        end
+-- ОБНОВЛЕННАЯ функция оптимизации памяти с подтверждением
+local function optimizeMemoryWithConfirm()
+    if not confirmAction("Вы уверены, что хотите оптимизировать память? Будут удалены старые записи истории.") then
+        print("❌ Оптимизация отменена")
+        return
     end
+    
+    optimizeMemory()
+    if saveMEKnowledge() then
+        print("✅ Память оптимизирована!")
+    else
+        print("❌ Ошибка сохранения")
+    end
+    os.sleep(1)
 end
 
 local function mainMenu()
     local craftThread = nil
-    
-    -- Проверка автозапуска при старте программы
-    if AUTOSTART_CONFIG.enabled and tableLength(craftDB) > 0 then
-        print("🤖 Обнаружен включенный автозапуск...")
-        local startNow = false
-        
-        -- Предлагаем пользователю выбор
-        print("Запустить автокрафт сейчас? (y/n):")
-        local input = io.read():lower()
-        if input == "y" or input == "yes" or input == "да" then
-            startNow = true
-        else
-            print("✅ Автозапуск отложен. Используйте меню для ручного запуска.")
-        end
-        
-        if startNow and autostartSequence() then
-            craftThread = thread.create(craftLoop)
-            print("✅ Автокрафт запущен в режиме автозапуска!")
-        end
-    end
     
     while running do
         term.clear()
@@ -1527,7 +1348,6 @@ local function mainMenu()
         print("⏱️ Время крафта: " .. tableLength(meKnowledge.craftTimes or {}))
         print("📋 История крафтов: " .. (meKnowledge.craftHistory and #meKnowledge.craftHistory or 0))
         print("🎯 Мониторинг: " .. (monitoring and "🟢 ВКЛ" or "🔴 ВЫКЛ"))
-        print("🤖 Автозапуск: " .. (AUTOSTART_CONFIG.enabled and "🟢 ВКЛ" or "🔴 ВЫКЛ"))
         print()
         print("1 - 🚀 Запуск автокрафта")
         print("2 - 🛑 Остановка автокрафта")
@@ -1544,8 +1364,7 @@ local function mainMenu()
         print("13 - 🎯 Мониторинг крафтов")
         print("14 - 📊 Статус мониторинга")
         print("15 - 🧹 Оптимизировать память")
-        print("16 - 🤖 Управление автозапуском")
-        print("17 - 🚪 Выход")
+        print("16 - 🚪 Выход")
         print()
         print("Выберите действие:")
         
@@ -1561,12 +1380,17 @@ local function mainMenu()
                 os.sleep(1)
             end
         elseif choice == "2" and craftThread then
-            running = false
-            craftThread:join()
-            craftThread = nil
-            running = true
-            print("✅ Автокрафт остановлен!")
-            os.sleep(1)
+            if not confirmAction("Вы уверены, что хотите остановить автокрафт?") then
+                print("❌ Остановка отменена")
+                os.sleep(1)
+            else
+                running = false
+                craftThread:join()
+                craftThread = nil
+                running = true
+                print("✅ Автокрафт остановлен!")
+                os.sleep(1)
+            end
         elseif choice == "3" then
             addAutoCraft()
         elseif choice == "4" then
@@ -1582,9 +1406,14 @@ local function mainMenu()
         elseif choice == "8" then
             showCraftableDetails()
         elseif choice == "9" then
-            analyzeMESystem()
-            print("✅ Данные обновлены!")
-            os.sleep(2)
+            if not confirmAction("Обновить данные ME системы? Существующие данные будут очищены.") then
+                print("❌ Обновление отменено")
+                os.sleep(1)
+            else
+                analyzeMESystem()
+                print("✅ Данные обновлены!")
+                os.sleep(2)
+            end
         elseif choice == "10" then
             researchAllCrafts()
             print("\nНажмите Enter...")
@@ -1598,35 +1427,28 @@ local function mainMenu()
         elseif choice == "14" then
             showMonitoringStatus()
         elseif choice == "15" then
-            optimizeMemory()
-            print("✅ Память оптимизирована!")
-            os.sleep(1)
+            optimizeMemoryWithConfirm()
         elseif choice == "16" then
-            autostartMenu()
-        elseif choice == "17" then
-            running = false
-            if craftThread then
-                craftThread:join()
+            if not confirmAction("Вы уверены, что хотите выйти?") then
+                print("❌ Выход отменен")
+                os.sleep(1)
+            else
+                running = false
+                if craftThread then
+                    craftThread:join()
+                end
+                if monitorThread then
+                    monitoring = false
+                    monitorThread:join()
+                end
+                print("👋 Выход...")
+                break
             end
-            if monitorThread then
-                monitoring = false
-                monitorThread:join()
-            end
-            print("👋 Выход...")
-            break
         end
     end
 end
 
--- Основная инициализация
 print("Загрузка умной системы автокрафта...")
-loadAutostartConfig()  -- Загружаем настройки автозапуска первыми
-
--- Автоматически создаем файл автозапуска если он включен
-if AUTOSTART_CONFIG.enabled then
-    setupAutostartFile()
-end
-
 loadMEKnowledge()
 loadConfig()
 
@@ -1640,17 +1462,6 @@ print("📊 Автокрафтов: " .. tableLength(craftDB))
 print("📚 Знаний ME: " .. (meKnowledge.items and #meKnowledge.items or 0) .. " предметов")
 print("⏱️ Время крафта: " .. tableLength(meKnowledge.craftTimes or {}))
 print("📋 История крафтов: " .. (meKnowledge.craftHistory and #meKnowledge.craftHistory or 0))
-print("🤖 Автозапуск: " .. (AUTOSTART_CONFIG.enabled and "🟢 ВКЛ" or "🔴 ВЫКЛ"))
-
--- Проверяем файл автозапуска
-local startupFile = io.open(AUTOSTART_CONFIG.startupFile, "r")
-if startupFile then
-    startupFile:close()
-    print("📁 Файл автозапуска: 🟢 СУЩЕСТВУЕТ")
-else
-    print("📁 Файл автозапуска: 🔴 ОТСУТСТВУЕТ")
-end
-
 os.sleep(2)
 
 mainMenu()
