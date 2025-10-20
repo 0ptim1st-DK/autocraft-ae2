@@ -1,4 +1,3 @@
--- ЕСЛИ ВОЗНИКАЮТ ПРОБЛЕМЫ С ЧТЕНИЕМ МЕ УМЕНЬШИТЬ РАЗМЕР ЧАНКА ДО 50!
 local component = require("component")
 local event = require("event")
 local serialization = require("serialization")
@@ -13,6 +12,13 @@ local STORAGE_CONFIG = {
     maxMemoryItems = 5000,
     chunkSize = 100,
     useExternalStorage = false
+}
+
+-- Конфигурация автозапуска
+local AUTOSTART_CONFIG = {
+    enabled = false,
+    configFile = "/home/autostart_config.dat",
+    delay = 5  -- Задержка перед автозапуском в секундах
 }
 
 if not component.isAvailable("me_interface") then
@@ -39,6 +45,103 @@ local meKnowledge = {
     craftHistory = {},   
     researchDB = {}      
 }
+
+-- Функции для работы с автозапуском
+local function loadAutostartConfig()
+    local file = io.open(AUTOSTART_CONFIG.configFile, "r")
+    if file then
+        local data = file:read("*a")
+        file:close()
+        local success, loaded = pcall(serialization.unserialize, data)
+        if success and loaded then
+            AUTOSTART_CONFIG.enabled = loaded.enabled or false
+            AUTOSTART_CONFIG.delay = loaded.delay or 5
+            return true
+        end
+    end
+    return false
+end
+
+local function saveAutostartConfig()
+    local file = io.open(AUTOSTART_CONFIG.configFile, "w")
+    if file then
+        file:write(serialization.serialize({
+            enabled = AUTOSTART_CONFIG.enabled,
+            delay = AUTOSTART_CONFIG.delay
+        }))
+        file:close()
+        return true
+    end
+    return false
+end
+
+local function toggleAutostart()
+    AUTOSTART_CONFIG.enabled = not AUTOSTART_CONFIG.enabled
+    if saveAutostartConfig() then
+        if AUTOSTART_CONFIG.enabled then
+            print("✅ Автозапуск ВКЛЮЧЕН")
+        else
+            print("✅ Автозапуск ВЫКЛЮЧЕН")
+        end
+    else
+        print("❌ Ошибка сохранения настроек автозапуска")
+    end
+    os.sleep(2)
+end
+
+local function setAutostartDelay()
+    term.clear()
+    print("=== ⏰ НАСТРОЙКА ЗАДЕРЖКИ АВТОЗАПУСКА ===")
+    print("Текущая задержка: " .. AUTOSTART_CONFIG.delay .. " секунд")
+    print("Введите новую задержку (в секундах, минимум 3):")
+    
+    local input = io.read()
+    local newDelay = tonumber(input)
+    
+    if newDelay and newDelay >= 3 then
+        AUTOSTART_CONFIG.delay = newDelay
+        if saveAutostartConfig() then
+            print("✅ Задержка установлена: " .. newDelay .. " секунд")
+        else
+            print("❌ Ошибка сохранения настроек")
+        end
+    else
+        print("❌ Неверное значение! Минимум 3 секунды.")
+    end
+    os.sleep(2)
+end
+
+local function showAutostartStatus()
+    term.clear()
+    print("=== 🤖 СТАТУС АВТОЗАПУСКА ===")
+    print("Статус: " .. (AUTOSTART_CONFIG.enabled and "🟢 ВКЛЮЧЕН" or "🔴 ВЫКЛЮЧЕН"))
+    print("Задержка: " .. AUTOSTART_CONFIG.delay .. " секунд")
+    print("\nПри включенном автозапуске система будет:")
+    print("1. Автоматически запускаться при включении компьютера")
+    print("2. Ждать " .. AUTOSTART_CONFIG.delay .. " секунд перед запуском")
+    print("3. Автоматически начинать автокрафт")
+    print("\nНажмите Enter для продолжения...")
+    io.read()
+end
+
+-- Функция автозапуска
+local function autostartSequence()
+    if not AUTOSTART_CONFIG.enabled then
+        return false
+    end
+    
+    print("🤖 Запуск в режиме автозапуска...")
+    print("⏰ Ожидание " .. AUTOSTART_CONFIG.delay .. " секунд перед стартом...")
+    
+    -- Обратный отсчет
+    for i = AUTOSTART_CONFIG.delay, 1, -1 do
+        print("Старт через: " .. i .. " сек...")
+        os.sleep(1)
+    end
+    
+    print("🚀 Запуск автокрафта...")
+    return true
+end
 
 -- Функция инициализации внешнего хранилища
 local function initExternalStorage()
@@ -1278,6 +1381,14 @@ end
 local function mainMenu()
     local craftThread = nil
     
+    -- Проверка автозапуска
+    if AUTOSTART_CONFIG.enabled and tableLength(craftDB) > 0 then
+        if autostartSequence() then
+            craftThread = thread.create(craftLoop)
+            print("✅ Автокрафт запущен в режиме автозапуска!")
+        end
+    end
+    
     while running do
         term.clear()
         print("=== 🧠 УМНАЯ СИСТЕМА АВТОКРАФТА ===")
@@ -1288,6 +1399,7 @@ local function mainMenu()
         print("⏱️ Время крафта: " .. tableLength(meKnowledge.craftTimes or {}))
         print("📋 История крафтов: " .. (meKnowledge.craftHistory and #meKnowledge.craftHistory or 0))
         print("🎯 Мониторинг: " .. (monitoring and "🟢 ВКЛ" or "🔴 ВЫКЛ"))
+        print("🤖 Автозапуск: " .. (AUTOSTART_CONFIG.enabled and "🟢 ВКЛ" or "🔴 ВЫКЛ"))
         print()
         print("1 - 🚀 Запуск автокрафта")
         print("2 - 🛑 Остановка автокрафта")
@@ -1304,7 +1416,8 @@ local function mainMenu()
         print("13 - 🎯 Мониторинг крафтов")
         print("14 - 📊 Статус мониторинга")
         print("15 - 🧹 Оптимизировать память")
-        print("16 - 🚪 Выход")
+        print("16 - 🤖 Управление автозапуском")
+        print("17 - 🚪 Выход")
         print()
         print("Выберите действие:")
         
@@ -1361,6 +1474,8 @@ local function mainMenu()
             print("✅ Память оптимизирована!")
             os.sleep(1)
         elseif choice == "16" then
+            autostartMenu()
+        elseif choice == "17" then
             running = false
             if craftThread then
                 craftThread:join()
@@ -1375,7 +1490,36 @@ local function mainMenu()
     end
 end
 
+-- НОВОЕ меню управления автозапуском
+local function autostartMenu()
+    while true do
+        term.clear()
+        print("=== 🤖 УПРАВЛЕНИЕ АВТОЗАПУСКОМ ===")
+        print("Статус: " .. (AUTOSTART_CONFIG.enabled and "🟢 ВКЛЮЧЕН" or "🔴 ВЫКЛЮЧЕН"))
+        print("Задержка: " .. AUTOSTART_CONFIG.delay .. " секунд")
+        print("\n1 - " .. (AUTOSTART_CONFIG.enabled and "🔴 Выключить" : "🟢 Включить") .. " автозапуск")
+        print("2 - ⏰ Настроить задержку")
+        print("3 - 📊 Показать статус")
+        print("4 - ↩️ Назад в главное меню")
+        print("\nВыберите действие:")
+        
+        local choice = io.read()
+        
+        if choice == "1" then
+            toggleAutostart()
+        elseif choice == "2" then
+            setAutostartDelay()
+        elseif choice == "3" then
+            showAutostartStatus()
+        elseif choice == "4" then
+            break
+        end
+    end
+end
+
+-- Основная инициализация
 print("Загрузка умной системы автокрафта...")
+loadAutostartConfig()  -- Загружаем настройки автозапуска первыми
 loadMEKnowledge()
 loadConfig()
 
@@ -1389,7 +1533,7 @@ print("📊 Автокрафтов: " .. tableLength(craftDB))
 print("📚 Знаний ME: " .. (meKnowledge.items and #meKnowledge.items or 0) .. " предметов")
 print("⏱️ Время крафта: " .. tableLength(meKnowledge.craftTimes or {}))
 print("📋 История крафтов: " .. (meKnowledge.craftHistory and #meKnowledge.craftHistory or 0))
+print("🤖 Автозапуск: " .. (AUTOSTART_CONFIG.enabled and "🟢 ВКЛ" or "🔴 ВЫКЛ"))
 os.sleep(2)
 
 mainMenu()
-
