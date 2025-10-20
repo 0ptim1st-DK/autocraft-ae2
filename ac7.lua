@@ -225,7 +225,7 @@ local function loadMEKnowledge()
                 print("📚 Загружена база знаний ME системы")
                 print("   Предметы: " .. #meKnowledge.items)
                 print("   Craftables: " .. #meKnowledge.craftables)
-                print("   ЦП: " .. #meKnowledge.cpus and #meKnowledge.cpus or 0)
+                print("   ЦП: " .. (#meKnowledge.cpus and #meKnowledge.cpus or 0))
                 print("   Паттерны: " .. tableLength(meKnowledge.patterns))
                 print("   Время крафта: " .. tableLength(meKnowledge.craftTimes))
                 print("   История крафтов: " .. #meKnowledge.craftHistory)
@@ -1378,6 +1378,33 @@ local function removeAutoCraft()
     os.sleep(2)
 end
 
+-- НОВОЕ меню управления автозапуском
+local function autostartMenu()
+    while true do
+        term.clear()
+        print("=== 🤖 УПРАВЛЕНИЕ АВТОЗАПУСКОМ ===")
+        print("Статус: " .. (AUTOSTART_CONFIG.enabled and "🟢 ВКЛЮЧЕН" or "🔴 ВЫКЛЮЧЕН"))
+        print("Задержка: " .. AUTOSTART_CONFIG.delay .. " секунд")
+        print("\n1 - " .. (AUTOSTART_CONFIG.enabled and "🔴 Выключить" or "🟢 Включить") .. " автозапуск")
+        print("2 - ⏰ Настроить задержку")
+        print("3 - 📊 Показать статус")
+        print("4 - ↩️ Назад в главное меню")
+        print("\nВыберите действие:")
+        
+        local choice = io.read()
+        
+        if choice == "1" then
+            toggleAutostart()
+        elseif choice == "2" then
+            setAutostartDelay()
+        elseif choice == "3" then
+            showAutostartStatus()
+        elseif choice == "4" then
+            break
+        end
+    end
+end
+
 local function mainMenu()
     local craftThread = nil
     
@@ -1485,33 +1512,6 @@ local function mainMenu()
                 monitorThread:join()
             end
             print("👋 Выход...")
-            break
-        end
-    end
-end
-
--- НОВОЕ меню управления автозапуском
-local function autostartMenu()
-    while true do
-        term.clear()
-        print("=== 🤖 УПРАВЛЕНИЕ АВТОЗАПУСКОМ ===")
-        print("Статус: " .. (AUTOSTART_CONFIG.enabled and "🟢 ВКЛЮЧЕН" or "🔴 ВЫКЛЮЧЕН"))
-        print("Задержка: " .. AUTOSTART_CONFIG.delay .. " секунд")
-        print("\n1 - " .. (AUTOSTART_CONFIG.enabled and "🔴 Выключить" : "🟢 Включить") .. " автозапуск")
-        print("2 - ⏰ Настроить задержку")
-        print("3 - 📊 Показать статус")
-        print("4 - ↩️ Назад в главное меню")
-        print("\nВыберите действие:")
-        
-        local choice = io.read()
-        
-        if choice == "1" then
-            toggleAutostart()
-        elseif choice == "2" then
-            setAutostartDelay()
-        elseif choice == "3" then
-            showAutostartStatus()
-        elseif choice == "4" then
             break
         end
     end
