@@ -2,7 +2,7 @@ local component = require("component")
 local internet = require("internet")
 local filesystem = require("filesystem")
 
-local VERSION = "5.3"
+local VERSION = "7.0"
 local GITHUB_USERNAME = "0ptim1st-DK"
 local REPO_URL = "https://raw.githubusercontent.com/" .. GITHUB_USERNAME .. "/autocraft-ae2/main/"
 
@@ -99,7 +99,7 @@ local function installProgram()
     print("")
     
     print("1. Загрузка основной программы...")
-    local success, err = downloadFile("ac5.lua")
+    local success, err = downloadFile("ac7.lua")
     if not success then
         print("❌ Ошибка: " .. err)
         return false
@@ -135,7 +135,7 @@ local function showInstructions()
     print("📚 Исходный код: https://github.com/" .. GITHUB_USERNAME .. "/autocraft-ae2")
     print("")
     print("💡 ПЕРВЫЙ ЗАПУСК:")
-    print("   1. Запустите программу: ac5.lua")
+    print("   1. Запустите программу: ac7.lua")
     print("   2. Выполните 'Анализ ME системы' (пункт 6) осторожно, требует много памяти при большом количестве актокрафтов")
     print("   3. Добавьте нужные автокрафты (пункт 3)")
     print("   4. Запустите автокрафт систему")
@@ -150,17 +150,17 @@ local function updateProgram()
     print("🔄 Обновление системы...")
     print("")
     
-    if filesystem.exists("/home/ac5.lua") then
-        os.execute("cp /home/ac5.lua /home/ac5_backup.lua 2>/dev/null")
-        print("📦 Создана резервная копия: ac5_backup.lua")
+    if filesystem.exists("/home/ac7.lua") then
+        os.execute("cp /home/ac5.lua /home/ac7_backup.lua 2>/dev/null")
+        print("📦 Создана резервная копия: ac7_backup.lua")
     end
     
-    local success, err = downloadFile("ac5.lua")
+    local success, err = downloadFile("ac7.lua")
     if not success then
         print("❌ Ошибка обновления: " .. err)
         
-        if filesystem.exists("/home/ac5_backup.lua") then
-            os.execute("cp /home/ac5_backup.lua /home/ac5.lua 2>/dev/null")
+        if filesystem.exists("/home/ac7_backup.lua") then
+            os.execute("cp /home/ac7_backup.lua /home/ac5.lua 2>/dev/null")
             print("🔄 Восстановлена резервная копия")
         end
         return false
@@ -235,3 +235,4 @@ if not success then
     print("❌ Критическая ошибка: " .. tostring(err))
     print("Попробуйте перезапустить установщик")
 end
+
