@@ -8,7 +8,7 @@ local internet = require("интернет")
  
 print("🚀 Установка Autocraft AE2...")
  
-local url = "https://raw.githubusercontent.com/0ptim1st-DK/autocraft-ae2/main/ac5.lua"
+local url = "https://raw.githubusercontent.com/0ptim1st-DK/autocraft-ae2/main/ac7.lua"
  
 .."📥 Загрузка с: "( print url)
  
@@ -37,7 +37,7 @@ local success, response = pcall(internet.request, url)
     Возврат
 конец
  
-local file = io.open("/home/ac5.lua", "w")
+local file = io.open("/home/ac7.lua", "w")
 не если файл то 
     print("❌ Ошибка при записи файла")
     Возврат 
@@ -47,11 +47,11 @@ local file = io.open("/home/ac5.lua", "w")
  
 print("✅ Файл сохранён")
  
-local check = loadfile("/home/ac5.lua")
+local check = loadfile("/home/ac7.lua")
 не если проверка то
     print("❌ Ошибка синтаксиса!")
     — Покажем начало файла для диагностики
-    local f = io.open("/home/ac5.lua", "r")
+    local f = io.open("/home/ac7.lua", "r")
     если f то
         print("Первые 5 строк файла:")
         for i = 1, 5 do
@@ -69,11 +69,12 @@ print("✅ Синтаксис верный!")
  
 local launcher = io.open("/home/autocraft", "w")
 если лаунчер то 
- лаунчер:write('lua /home/ac5.lua\n')
+ лаунчер:write('lua /home/ac7.lua\n')
  лаунчер:закрыть()
     os.execute("chmod +x /home/autocraft 2>/dev/null")
     print("✅ Скрипт запуска создан")
 конец
  
 print("🎉 Установка завершена!")
-print("Запуск: ac5.lua")
+print("Запуск: ac7.lua")
+
