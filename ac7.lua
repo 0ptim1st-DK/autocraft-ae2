@@ -1,3 +1,4 @@
+-- ЕСЛИ ВОЗНИКАЮТ ПРОБЛЕМЫ С ЧТЕНИЕМ МЕ УМЕНЬШИТЬ РАЗМЕР ЧАНКА ДО 50!
 local component = require("component")
 local event = require("event")
 local serialization = require("serialization")
@@ -1391,3 +1392,4 @@ print("📋 История крафтов: " .. (meKnowledge.craftHistory and #m
 os.sleep(2)
 
 mainMenu()
+
