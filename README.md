@@ -238,8 +238,8 @@ CPU: 1
 - [Applied Energistics 2](https://github.com/AppliedEnergistics/Applied-Energistics-2)
 - [OpenComputers](https://github.com/MightyPirates/OpenComputers)
 
-Создано с ❤️ для сообщества Minecraft технических модов
-Создавалось для игры на серверах проекта **[McSkill](https://mcskill.net/)**
-> Играйте с нами на сервере [GalaxyCraft 1.7.10](https://mcskill.net/servers/galaxy1710)
+#### Создано с ❤️ для сообщества Minecraft технических модов
+#### Создавалось для игры на серверах проекта **[McSkill](https://mcskill.net/)**
+#### Играйте с нами на сервере [GalaxyCraft 1.7.10](https://mcskill.net/servers/galaxy1710)
 
-Оптимизировано для больших AE2 систем с 2024 года
+## Оптимизировано для больших AE2 систем с 2024 года
