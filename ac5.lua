@@ -5,15 +5,6 @@ local term = require("term")
 local thread = require("thread")
 local computer = require("computer")
 
--- Конфигурация оптимизации памяти
-local STORAGE_CONFIG = {
-    primaryStorage = "/home/",
-    externalStorage = "/mnt/raid/",
-    maxMemoryItems = 300,
-    chunkSize = 50,
-    useExternalStorage = false
-}
-
 if not component.isAvailable("me_interface") then
   print("Ошибка: ME интерфейс не найден!")
   print("Убедитесь что ME интерфейс подключен к компьютеру")
@@ -39,44 +30,6 @@ local meKnowledge = {
     researchDB = {}      
 }
 
--- Функция инициализации внешнего хранилища
-local function initExternalStorage()
-    local mounts = {"/mnt/raid", "/mnt/external", "/mnt/disk", "/mnt"}
-    for _, mount in ipairs(mounts) do
-        local checkCmd = "test -d " .. mount .. " 2>/dev/null"
-        if os.execute(checkCmd) then
-            STORAGE_CONFIG.externalStorage = mount .. "/"
-            STORAGE_CONFIG.useExternalStorage = true
-            print("✅ Внешнее хранилище: " .. mount)
-            return true
-        end
-    end
-    
-    os.execute("mkdir -p /mnt/raid 2>/dev/null")
-    print("⚠️ Внешнее хранилище не найдено, используем основное")
-    return false
-end
-
--- Функция получения пути с учетом внешнего хранилища
-local function getStoragePath(filename)
-    if STORAGE_CONFIG.useExternalStorage then
-        return STORAGE_CONFIG.externalStorage .. filename
-    else
-        return STORAGE_CONFIG.primaryStorage .. filename
-    end
-end
-
--- Функция оптимизации памяти
-local function optimizeMemory()
-    if meKnowledge.craftHistory and #meKnowledge.craftHistory > 50 then
-        local newHistory = {}
-        for i = math.max(1, #meKnowledge.craftHistory - 49), #meKnowledge.craftHistory do
-            table.insert(newHistory, meKnowledge.craftHistory[i])
-        end
-        meKnowledge.craftHistory = newHistory
-    end
-end
-
 local function tableLength(tbl)
     if not tbl then return 0 end
     local count = 0
@@ -95,117 +48,35 @@ local function getTableKeys(tbl)
     return keys
 end
 
--- ОПТИМИЗИРОВАННАЯ функция загрузки
 local function loadMEKnowledge()
-    local paths = {
-        getStoragePath("me_knowledge.dat"),
-        STORAGE_CONFIG.primaryStorage .. "me_knowledge.dat"
-    }
-    
-    for _, path in ipairs(paths) do
-        local file = io.open(path, "r")
-        if file then
-            local data = file:read("*a")
-            file:close()
-            local success, loaded = pcall(serialization.unserialize, data)
-            if success and loaded then
-                meKnowledge = {
-                    items = loaded.items or {},
-                    craftables = loaded.craftables or {},
-                    cpus = loaded.cpus or {},
-                    patterns = loaded.patterns or {},
-                    craftTimes = loaded.craftTimes or {},
-                    craftHistory = loaded.craftHistory or {},
-                    researchDB = loaded.researchDB or {}
-                }
-                print("📚 Загружена база знаний ME системы")
-                print("   Предметы: " .. #meKnowledge.items)
-                print("   Craftables: " .. #meKnowledge.craftables)
-                print("   ЦП: " .. #meKnowledge.cpus and #meKnowledge.cpus or 0)
-                print("   Паттерны: " .. tableLength(meKnowledge.patterns))
-                print("   Время крафта: " .. tableLength(meKnowledge.craftTimes))
-                print("   История крафтов: " .. #meKnowledge.craftHistory)
-                return true
-            end
+    local file = io.open(meKnowledgeFile, "r")
+    if file then
+        local data = file:read("*a")
+        file:close()
+        local success, loaded = pcall(serialization.unserialize, data)
+        if success and loaded then
+            meKnowledge = loaded
+        else
+            meKnowledge = {items = {}, craftables = {}, cpus = {}, patterns = {}, craftTimes = {}, craftHistory = {}, researchDB = {}}
         end
+        print("📚 Загружена база знаний ME системы")
+        print("   Предметы: " .. (meKnowledge.items and #meKnowledge.items or 0))
+        print("   Craftables: " .. (meKnowledge.craftables and #meKnowledge.craftables or 0))
+        print("   ЦП: " .. (meKnowledge.cpus and #meKnowledge.cpus or 0))
+        print("   Паттерны: " .. tableLength(meKnowledge.patterns))
+        print("   Время крафта: " .. tableLength(meKnowledge.craftTimes))
+        print("   История крафтов: " .. (meKnowledge.craftHistory and #meKnowledge.craftHistory or 0))
+    else
+        print("📚 Создаем новую базу знаний ME системы")
+        meKnowledge = {items = {}, craftables = {}, cpus = {}, patterns = {}, craftTimes = {}, craftHistory = {}, researchDB = {}}
     end
-    
-    print("📚 Создаем новую базу знаний ME системы")
-    meKnowledge = {items = {}, craftables = {}, cpus = {}, patterns = {}, craftTimes = {}, craftHistory = {}, researchDB = {}}
-    return false
 end
 
--- ОПТИМИЗИРОВАННАЯ функция сохранения
 local function saveMEKnowledge()
-    -- Создаем облегченную копию для сохранения
-    local saveData = {
-        items = {},
-        craftables = {},
-        cpus = meKnowledge.cpus or {},
-        patterns = meKnowledge.patterns or {},
-        craftTimes = meKnowledge.craftTimes or {},
-        craftHistory = {},
-        researchDB = meKnowledge.researchDB or {}
-    }
-    
-    -- Сохраняем только базовую информацию о предметах
-    if meKnowledge.items then
-        for i = 1, math.min(STORAGE_CONFIG.maxMemoryItems, #meKnowledge.items) do
-            local item = meKnowledge.items[i]
-            if item then
-                table.insert(saveData.items, {
-                    name = item.name,
-                    size = item.size or 0,
-                    label = item.label or "нет"
-                })
-            end
-        end
-    end
-    
-    -- Сохраняем только базовую информацию о craftables
-    if meKnowledge.craftables then
-        for i = 1, math.min(100, #meKnowledge.craftables) do
-            local craftable = meKnowledge.craftables[i]
-            if craftable and craftable.itemStack then
-                table.insert(saveData.craftables, {
-                    index = craftable.index,
-                    itemStack = {
-                        name = craftable.itemStack.name,
-                        label = craftable.itemStack.label or "нет"
-                    }
-                })
-            end
-        end
-    end
-    
-    -- Сохраняем только последние записи истории
-    if meKnowledge.craftHistory then
-        for i = math.max(1, #meKnowledge.craftHistory - 29), #meKnowledge.craftHistory do
-            if meKnowledge.craftHistory[i] then
-                local obs = meKnowledge.craftHistory[i]
-                table.insert(saveData.craftHistory, {
-                    cpuIndex = obs.cpuIndex,
-                    duration = obs.duration or 0,
-                    status = obs.status or "completed"
-                })
-            end
-        end
-    end
-    
-    local path = getStoragePath("me_knowledge.dat")
-    local file = io.open(path, "w")
+    local file = io.open(meKnowledgeFile, "w")
     if file then
-        file:write(serialization.serialize(saveData))
+        file:write(serialization.serialize(meKnowledge))
         file:close()
-        
-        if STORAGE_CONFIG.useExternalStorage then
-            local backupFile = io.open(STORAGE_CONFIG.primaryStorage .. "me_knowledge.dat", "w")
-            if backupFile then
-                backupFile:write(serialization.serialize(saveData))
-                backupFile:close()
-            end
-        end
-        
         return true
     end
     return false
@@ -303,11 +174,8 @@ local function showPaginated(data, title, itemsPerPage)
     end
 end
 
--- ОПТИМИЗИРОВАННАЯ функция анализа ME системы
 local function analyzeMESystem()
     print("🔍 Анализ ME системы...")
-    initExternalStorage()
-    optimizeMemory()
     
     if not meKnowledge.items then meKnowledge.items = {} end
     if not meKnowledge.craftables then meKnowledge.craftables = {} end
@@ -316,48 +184,33 @@ local function analyzeMESystem()
     if not meKnowledge.craftTimes then meKnowledge.craftTimes = {} end
     if not meKnowledge.craftHistory then meKnowledge.craftHistory = {} end
     
-    -- Анализ предметов по чанкам
     local success, items = pcall(me.getItemsInNetwork)
     if success and items then
         meKnowledge.items = {}
-        local itemCount = #items
-        print("   📦 Всего предметов: " .. itemCount)
-        
-        -- Обрабатываем предметы чанками
-        for chunkStart = 1, itemCount, STORAGE_CONFIG.chunkSize do
-            local chunkEnd = math.min(chunkStart + STORAGE_CONFIG.chunkSize - 1, itemCount)
-            print("   Обработка чанка: " .. chunkStart .. "-" .. chunkEnd)
-            
-            for i = chunkStart, chunkEnd do
-                local item = items[i]
-                if item and item.name then
-                    local itemInfo = {
-                        name = item.name,
-                        size = item.size or 0,
-                        label = item.label or "нет"
-                    }
-                    table.insert(meKnowledge.items, itemInfo)
+        for i, item in ipairs(items) do
+            if item and item.name then
+                local itemInfo = {
+                    name = item.name,
+                    size = item.size or 0,
+                    maxSize = item.maxSize or 0,
+                    label = item.label or "нет",
+                    allFields = {}
+                }
+                
+                for key, value in pairs(item) do
+                    if type(value) == "string" or type(value) == "number" or type(value) == "boolean" then
+                        itemInfo.allFields[key] = value
+                    end
                 end
                 
-                if i % 20 == 0 then
-                    os.sleep(0.05)
-                end
-            end
-            
-            -- Сохраняем промежуточные результаты каждые 100 предметов
-            if chunkEnd % 100 == 0 then
-                if saveMEKnowledge() then
-                    print("   💾 Промежуточное сохранение...")
-                end
+                table.insert(meKnowledge.items, itemInfo)
             end
         end
-        print("   ✅ Предметов анализировано: " .. #meKnowledge.items)
+        print("   📦 Предметов анализировано: " .. #meKnowledge.items)
     else
         print("   ❌ Ошибка анализа предметов")
     end
     
-    -- Анализ craftables с оптимизацией
-    print("   🛠️ Анализ craftables...")
     local success, craftables = pcall(me.getCraftables)
     if success and craftables then
         meKnowledge.craftables = {}
@@ -372,7 +225,14 @@ local function analyzeMESystem()
                 if craftable.request then craftableInfo.methods.request = true end
                 if craftable.getItemStack then craftableInfo.methods.getItemStack = true end
                 
-                -- Только базовая информация
+                for key, value in pairs(craftable) do
+                    if type(value) == "string" or type(value) == "number" or type(value) == "boolean" then
+                        craftableInfo.fields[key] = value
+                    elseif type(value) == "function" then
+                        craftableInfo.methods[key] = true
+                    end
+                end
+                
                 if craftable.getItemStack then
                     local itemSuccess, itemStack = pcall(craftable.getItemStack)
                     if itemSuccess and itemStack then
@@ -384,24 +244,19 @@ local function analyzeMESystem()
                         
                         if itemStack.name then
                             meKnowledge.patterns[itemStack.name] = i
+                            print("   🔗 Связь: " .. itemStack.name .. " -> craftable #" .. i)
                         end
                     end
                 end
                 
                 table.insert(meKnowledge.craftables, craftableInfo)
-                
-                if i % 20 == 0 then
-                    os.sleep(0.05)
-                end
             end
         end
-        print("   ✅ Craftables анализировано: " .. #meKnowledge.craftables)
+        print("   🛠️ Craftables анализировано: " .. #meKnowledge.craftables)
     else
         print("   ❌ Ошибка анализа craftables")
     end
     
-    -- Анализ ЦП
-    print("   ⚡ Анализ ЦП...")
     local success, cpus = pcall(me.getCraftingCPUs)
     if success and cpus then
         meKnowledge.cpus = {}
@@ -411,13 +266,20 @@ local function analyzeMESystem()
                     index = i,
                     busy = cpu.busy or false,
                     storage = cpu.storage or 0,
-                    name = cpu.name or "Без названия"
+                    name = cpu.name or "Без названия",
+                    allFields = {}
                 }
+                
+                for key, value in pairs(cpu) do
+                    if type(value) == "string" or type(value) == "number" or type(value) == "boolean" then
+                        cpuInfo.allFields[key] = value
+                    end
+                end
                 
                 table.insert(meKnowledge.cpus, cpuInfo)
             end
         end
-        print("   ✅ ЦП анализировано: " .. #meKnowledge.cpus)
+        print("   ⚡ ЦП анализировано: " .. #meKnowledge.cpus)
     else
         print("   ❌ Ошибка анализа ЦП")
     end
@@ -429,7 +291,6 @@ local function analyzeMESystem()
     end
 end
 
--- Остальные функции остаются без изменений
 local function researchAllCrafts()
     print("🔬 Интеллектуальное исследование всех крафтов...")
     
@@ -458,9 +319,7 @@ local function researchAllCrafts()
                 
                 meKnowledge.patterns[itemStack.name] = i
                 
-                if researched % 50 == 0 then
-                    print("   ✅ Исследовано: " .. researched .. " крафтов")
-                end
+                print("   ✅ Исследован: " .. (itemStack.label or itemStack.name) .. " -> craftable #" .. i)
             end
         end
     end
@@ -523,8 +382,8 @@ local function measureCraftTime(itemID, craftName, craftableIndex)
     local totalTime = 0
     local successfulMeasurements = 0
     
-    for attempt = 1, 3 do
-        print("   Попытка " .. attempt .. "/3...")
+    for attempt = 1, 4 do
+        print("   Попытка " .. attempt .. "/4...")
         
         local startCount = getItemCount(itemID)
         local startTime = computer.uptime()
@@ -532,7 +391,7 @@ local function measureCraftTime(itemID, craftName, craftableIndex)
         local craftSuccess, result = pcall(craftable.request, 1)
         
         if craftSuccess and result then
-            local timeout = 30
+            local timeout = 35
             local craftCompleted = false
             
             for i = 1, timeout do
@@ -666,6 +525,7 @@ local function monitorActiveCrafts()
                         if #craftedItems > 0 then
                             local mainItem = craftedItems[1]
                             meKnowledge.craftTimes[mainItem.itemID] = observation.duration
+                            print("📊 Записано время крафта для " .. mainItem.itemLabel .. ": " .. string.format("%.1f", observation.duration) .. " сек")
                         end
                         
                         saveMEKnowledge()
@@ -725,10 +585,10 @@ local function showMonitoringStatus()
         print("   Нет активных крафтов")
     end
     
-    print("\n📋 ПОСЛЕДНИЕ НАБЛЮДЕНИЯ:")
+    print("\n📋 ПОСЛЕДНИЕ 3 НАБЛЮДЕНИЯ:")
     local recentObservations = {}
     if meKnowledge.craftHistory then
-        for i = #meKnowledge.craftHistory, math.max(1, #meKnowledge.craftHistory - 4), -1 do
+        for i = #meKnowledge.craftHistory, math.max(1, #meKnowledge.craftHistory - 2), -1 do
             table.insert(recentObservations, meKnowledge.craftHistory[i])
         end
     end
@@ -741,12 +601,12 @@ local function showMonitoringStatus()
             print("      Время: " .. string.format("%.1f", obs.duration or 0) .. " сек")
             if obs.craftedItems and #obs.craftedItems > 0 then
                 for j, item in ipairs(obs.craftedItems) do
-                    if j <= 2 then 
+                    if j <= 3 then 
                         print("      📦 " .. (item.itemLabel or item.itemID) .. " x" .. item.amount)
                     end
                 end
-                if #obs.craftedItems > 2 then
-                    print("      ... и еще " .. (#obs.craftedItems - 2) .. " предметов")
+                if #obs.craftedItems > 3 then
+                    print("      ... и еще " .. (#obs.craftedItems - 3) .. " предметов")
                 end
             end
             print("      ---")
@@ -1212,8 +1072,7 @@ local function mainMenu()
         print("12 - ⏱️ Просмотр времени крафта")
         print("13 - 🎯 Мониторинг крафтов")
         print("14 - 📊 Статус мониторинга")
-        print("15 - 🧹 Оптимизировать память")
-        print("16 - 🚪 Выход")
+        print("15 - 🚪 Выход")
         print()
         print("Выберите действие:")
         
@@ -1266,10 +1125,6 @@ local function mainMenu()
         elseif choice == "14" then
             showMonitoringStatus()
         elseif choice == "15" then
-            optimizeMemory()
-            print("✅ Память оптимизирована!")
-            os.sleep(1)
-        elseif choice == "16" then
             running = false
             if craftThread then
                 craftThread:join()
