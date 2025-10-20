@@ -46,21 +46,65 @@ local function confirmAction(actionText)
     return (input == "y" or input == "yes" or input == "да")
 end
 
--- Функция инициализации внешнего хранилища
+-- УЛУЧШЕННАЯ функция инициализации внешнего хранилища
 local function initExternalStorage()
-    local mounts = {"/mnt/raid", "/mnt/external", "/mnt/disk", "/mnt"}
-    for _, mount in ipairs(mounts) do
-        local checkCmd = "test -d " .. mount .. " 2>/dev/null"
-        if os.execute(checkCmd) then
-            STORAGE_CONFIG.externalStorage = mount .. "/"
-            STORAGE_CONFIG.useExternalStorage = true
-            print("✅ Внешнее хранилище: " .. mount)
-            return true
+    print("🔍 Поиск внешнего хранилища...")
+    
+    -- Проверяем доступные диски через компоненты
+    local disks = {}
+    for address, type in component.list() do
+        if type == "filesystem" and address ~= computer.tmpAddress() then
+            local fs = component.proxy(address)
+            if fs and fs.isReadOnly() == false then
+                local label = fs.getLabel() or "Без названия"
+                local space = math.floor(fs.spaceTotal() / 1024 / 1024)
+                table.insert(disks, {
+                    address = address,
+                    label = label,
+                    space = space,
+                    path = "/mnt/" .. address:sub(1, 8)
+                })
+            end
         end
     end
     
-    os.execute("mkdir -p /mnt/raid 2>/dev/null")
+    -- Проверяем стандартные точки монтирования
+    local mounts = {"/mnt/raid", "/mnt/external", "/mnt/disk", "/mnt/usb", "/mnt"}
+    for _, mount in ipairs(mounts) do
+        local checkCmd = "ls " .. mount .. " > /dev/null 2>&1"
+        if os.execute(checkCmd) then
+            -- Проверяем доступность записи
+            local testFile = mount .. "/test_write.tmp"
+            local testWrite = io.open(testFile, "w")
+            if testWrite then
+                testWrite:write("test")
+                testWrite:close()
+                os.remove(testFile)
+                
+                STORAGE_CONFIG.externalStorage = mount .. "/"
+                STORAGE_CONFIG.useExternalStorage = true
+                print("✅ Внешнее хранилище найдено: " .. mount)
+                return true
+            end
+        end
+    end
+    
+    -- Если нашли диски, но нет точек монтирования, создаем
+    if #disks > 0 then
+        for _, disk in ipairs(disks) do
+            os.execute("mkdir -p " .. disk.path .. " 2>/dev/null")
+            local mountCmd = "mount " .. disk.address .. " " .. disk.path .. " 2>/dev/null"
+            if os.execute(mountCmd) then
+                STORAGE_CONFIG.externalStorage = disk.path .. "/"
+                STORAGE_CONFIG.useExternalStorage = true
+                print("✅ Внешнее хранилище подключено: " .. disk.path .. " (" .. disk.label .. ", " .. disk.space .. " МБ)")
+                return true
+            end
+        end
+    end
+    
     print("⚠️ Внешнее хранилище не найдено, используем основное")
+    STORAGE_CONFIG.useExternalStorage = false
     return false
 end
 
@@ -70,6 +114,61 @@ local function getStoragePath(filename)
         return STORAGE_CONFIG.externalStorage .. filename
     else
         return STORAGE_CONFIG.primaryStorage .. filename
+    end
+end
+
+-- Функция форматирования баз данных
+local function formatDatabases()
+    if not confirmAction("⚠️ ВНИМАНИЕ: Это действие полностью очистит все данные программы! Вы уверены?") then
+        print("❌ Форматирование отменено")
+        return false
+    end
+    
+    if not confirmAction("❌ Действие необратимо! Все автокрафты, исследования и история будут удалены. Продолжить?") then
+        print("❌ Форматирование отменено")
+        return false
+    end
+    
+    print("🧹 Начало форматирования баз данных...")
+    
+    -- Очищаем оперативную память
+    craftDB = {}
+    meKnowledge = {
+        items = {},          
+        craftables = {},     
+        cpus = {},           
+        patterns = {},       
+        craftTimes = {},     
+        craftHistory = {},   
+        researchDB = {}      
+    }
+    
+    -- Удаляем файлы конфигурации
+    local filesToDelete = {
+        configFile,
+        meKnowledgeFile,
+        getStoragePath("me_knowledge.dat"),
+        STORAGE_CONFIG.primaryStorage .. "me_knowledge.dat"
+    }
+    
+    local deletedCount = 0
+    for _, filePath in ipairs(filesToDelete) do
+        if os.remove(filePath) then
+            print("✅ Удален: " .. filePath)
+            deletedCount = deletedCount + 1
+        end
+    end
+    
+    -- Создаем чистые базы
+    if saveConfig() and saveMEKnowledge() then
+        print("\n✅ Форматирование завершено!")
+        print("🗑️  Удалено файлов: " .. deletedCount)
+        print("🆕 Созданы чистые базы данных")
+        print("🔧 Система готова к настройке")
+        return true
+    else
+        print("❌ Ошибка создания чистых баз данных")
+        return false
     end
 end
 
@@ -320,7 +419,7 @@ local function analyzeMESystem()
     end
     
     print("🔍 Анализ ME системы...")
-    initExternalStorage()
+    initExternalStorage()  -- Всегда проверяем хранилище перед анализом
     optimizeMemory()
     
     -- ОЧИСТКА ДАННЫХ ПЕРЕД НОВЫМ АНАЛИЗОМ
@@ -1348,6 +1447,7 @@ local function mainMenu()
         print("⏱️ Время крафта: " .. tableLength(meKnowledge.craftTimes or {}))
         print("📋 История крафтов: " .. (meKnowledge.craftHistory and #meKnowledge.craftHistory or 0))
         print("🎯 Мониторинг: " .. (monitoring and "🟢 ВКЛ" or "🔴 ВЫКЛ"))
+        print("💾 Хранилище: " .. (STORAGE_CONFIG.useExternalStorage and "🟢 ВНЕШНЕЕ" or "🔴 ЛОКАЛЬНОЕ"))
         print()
         print("1 - 🚀 Запуск автокрафта")
         print("2 - 🛑 Остановка автокрафта")
@@ -1364,7 +1464,8 @@ local function mainMenu()
         print("13 - 🎯 Мониторинг крафтов")
         print("14 - 📊 Статус мониторинга")
         print("15 - 🧹 Оптимизировать память")
-        print("16 - 🚪 Выход")
+        print("16 - 🗑️  Форматировать базы данных")
+        print("17 - 🚪 Выход")
         print()
         print("Выберите действие:")
         
@@ -1429,6 +1530,10 @@ local function mainMenu()
         elseif choice == "15" then
             optimizeMemoryWithConfirm()
         elseif choice == "16" then
+            formatDatabases()
+            print("\nНажмите Enter...")
+            io.read()
+        elseif choice == "17" then
             if not confirmAction("Вы уверены, что хотите выйти?") then
                 print("❌ Выход отменен")
                 os.sleep(1)
@@ -1448,7 +1553,9 @@ local function mainMenu()
     end
 end
 
+-- Основная инициализация
 print("Загрузка умной системы автокрафта...")
+initExternalStorage()  -- Инициализируем хранилище при запуске
 loadMEKnowledge()
 loadConfig()
 
@@ -1462,6 +1569,7 @@ print("📊 Автокрафтов: " .. tableLength(craftDB))
 print("📚 Знаний ME: " .. (meKnowledge.items and #meKnowledge.items or 0) .. " предметов")
 print("⏱️ Время крафта: " .. tableLength(meKnowledge.craftTimes or {}))
 print("📋 История крафтов: " .. (meKnowledge.craftHistory and #meKnowledge.craftHistory or 0))
+print("💾 Хранилище: " .. (STORAGE_CONFIG.useExternalStorage and "🟢 ВНЕШНЕЕ" or "🔴 ЛОКАЛЬНОЕ"))
 os.sleep(2)
 
 mainMenu()
