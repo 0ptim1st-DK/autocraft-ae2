@@ -18,7 +18,8 @@ local STORAGE_CONFIG = {
 local AUTOSTART_CONFIG = {
     enabled = false,
     configFile = "/home/autostart_config.dat",
-    delay = 5  -- Задержка перед автозапуском в секундах
+    delay = 5,  -- Задержка перед автозапуском в секундах
+    startupFile = "/home/startup.lua"  -- Файл автозапуска OpenOS
 }
 
 if not component.isAvailable("me_interface") then
@@ -75,13 +76,61 @@ local function saveAutostartConfig()
     return false
 end
 
+-- Функция для создания/удаления файла автозапуска
+local function setupAutostartFile()
+    if AUTOSTART_CONFIG.enabled then
+        -- Создаем файл автозапуска
+        local startupFile = io.open(AUTOSTART_CONFIG.startupFile, "w")
+        if startupFile then
+            startupFile:write([[
+-- Автозапуск системы автокрафта
+print("🤖 Загрузка системы автокрафта...")
+os.sleep(]] .. AUTOSTART_CONFIG.delay .. [[)
+
+-- Проверяем наличие ME интерфейса
+local component = require("component")
+if not component.isAvailable("me_interface") then
+    print("❌ Ошибка: ME интерфейс не найден!")
+    print("Автозапуск отменен.")
+    return
+end
+
+-- Запускаем основную программу
+local shell = require("shell")
+shell.execute("/home/ac7.lua")
+]])
+            startupFile:close()
+            print("✅ Файл автозапуска создан: " .. AUTOSTART_CONFIG.startupFile)
+            return true
+        else
+            print("❌ Ошибка создания файла автозапуска")
+            return false
+        end
+    else
+        -- Удаляем файл автозапуска если он существует
+        if os.remove(AUTOSTART_CONFIG.startupFile) then
+            print("✅ Файл автозапуска удален")
+        else
+            -- Если файла не было, это нормально
+            print("✅ Автозапуск отключен")
+        end
+        return true
+    end
+end
+
 local function toggleAutostart()
     AUTOSTART_CONFIG.enabled = not AUTOSTART_CONFIG.enabled
     if saveAutostartConfig() then
-        if AUTOSTART_CONFIG.enabled then
-            print("✅ Автозапуск ВКЛЮЧЕН")
+        if setupAutostartFile() then
+            if AUTOSTART_CONFIG.enabled then
+                print("✅ Автозапуск ВКЛЮЧЕН")
+                print("📁 Файл автозапуска создан: " .. AUTOSTART_CONFIG.startupFile)
+                print("⏰ Задержка: " .. AUTOSTART_CONFIG.delay .. " секунд")
+            else
+                print("✅ Автозапуск ВЫКЛЮЧЕН")
+            end
         else
-            print("✅ Автозапуск ВЫКЛЮЧЕН")
+            print("❌ Ошибка настройки автозапуска")
         end
     else
         print("❌ Ошибка сохранения настроек автозапуска")
@@ -101,6 +150,9 @@ local function setAutostartDelay()
     if newDelay and newDelay >= 3 then
         AUTOSTART_CONFIG.delay = newDelay
         if saveAutostartConfig() then
+            if AUTOSTART_CONFIG.enabled then
+                setupAutostartFile()  -- Обновляем файл автозапуска
+            end
             print("✅ Задержка установлена: " .. newDelay .. " секунд")
         else
             print("❌ Ошибка сохранения настроек")
@@ -116,15 +168,26 @@ local function showAutostartStatus()
     print("=== 🤖 СТАТУС АВТОЗАПУСКА ===")
     print("Статус: " .. (AUTOSTART_CONFIG.enabled and "🟢 ВКЛЮЧЕН" or "🔴 ВЫКЛЮЧЕН"))
     print("Задержка: " .. AUTOSTART_CONFIG.delay .. " секунд")
+    
+    -- Проверяем существование файла автозапуска
+    local startupFile = io.open(AUTOSTART_CONFIG.startupFile, "r")
+    if startupFile then
+        startupFile:close()
+        print("📁 Файл автозапуска: 🟢 СУЩЕСТВУЕТ")
+    else
+        print("📁 Файл автозапуска: 🔴 ОТСУТСТВУЕТ")
+    end
+    
     print("\nПри включенном автозапуске система будет:")
     print("1. Автоматически запускаться при включении компьютера")
     print("2. Ждать " .. AUTOSTART_CONFIG.delay .. " секунд перед запуском")
     print("3. Автоматически начинать автокрафт")
+    print("\nФайл автозапуска: " .. AUTOSTART_CONFIG.startupFile)
     print("\nНажмите Enter для продолжения...")
     io.read()
 end
 
--- Функция автозапуска
+-- Функция автозапуска (для немедленного запуска в текущей сессии)
 local function autostartSequence()
     if not AUTOSTART_CONFIG.enabled then
         return false
@@ -1385,10 +1448,22 @@ local function autostartMenu()
         print("=== 🤖 УПРАВЛЕНИЕ АВТОЗАПУСКОМ ===")
         print("Статус: " .. (AUTOSTART_CONFIG.enabled and "🟢 ВКЛЮЧЕН" or "🔴 ВЫКЛЮЧЕН"))
         print("Задержка: " .. AUTOSTART_CONFIG.delay .. " секунд")
+        
+        -- Проверяем существование файла автозапуска
+        local startupFile = io.open(AUTOSTART_CONFIG.startupFile, "r")
+        if startupFile then
+            startupFile:close()
+            print("📁 Файл автозапуска: 🟢 СУЩЕСТВУЕТ")
+        else
+            print("📁 Файл автозапуска: 🔴 ОТСУТСТВУЕТ")
+        end
+        
         print("\n1 - " .. (AUTOSTART_CONFIG.enabled and "🔴 Выключить" or "🟢 Включить") .. " автозапуск")
         print("2 - ⏰ Настроить задержку")
         print("3 - 📊 Показать статус")
-        print("4 - ↩️ Назад в главное меню")
+        print("4 - 🔧 Принудительно создать файл автозапуска")
+        print("5 - 🗑️  Принудительно удалить файл автозапуска")
+        print("6 - ↩️ Назад в главное меню")
         print("\nВыберите действие:")
         
         local choice = io.read()
@@ -1400,6 +1475,20 @@ local function autostartMenu()
         elseif choice == "3" then
             showAutostartStatus()
         elseif choice == "4" then
+            if setupAutostartFile() then
+                print("✅ Файл автозапуска создан!")
+            else
+                print("❌ Ошибка создания файла автозапуска")
+            end
+            os.sleep(2)
+        elseif choice == "5" then
+            if os.remove(AUTOSTART_CONFIG.startupFile) then
+                print("✅ Файл автозапуска удален!")
+            else
+                print("✅ Файл автозапуска не существует или уже удален")
+            end
+            os.sleep(2)
+        elseif choice == "6" then
             break
         end
     end
@@ -1408,9 +1497,21 @@ end
 local function mainMenu()
     local craftThread = nil
     
-    -- Проверка автозапуска
+    -- Проверка автозапуска при старте программы
     if AUTOSTART_CONFIG.enabled and tableLength(craftDB) > 0 then
-        if autostartSequence() then
+        print("🤖 Обнаружен включенный автозапуск...")
+        local startNow = false
+        
+        -- Предлагаем пользователю выбор
+        print("Запустить автокрафт сейчас? (y/n):")
+        local input = io.read():lower()
+        if input == "y" or input == "yes" or input == "да" then
+            startNow = true
+        else
+            print("✅ Автозапуск отложен. Используйте меню для ручного запуска.")
+        end
+        
+        if startNow and autostartSequence() then
             craftThread = thread.create(craftLoop)
             print("✅ Автокрафт запущен в режиме автозапуска!")
         end
@@ -1520,6 +1621,12 @@ end
 -- Основная инициализация
 print("Загрузка умной системы автокрафта...")
 loadAutostartConfig()  -- Загружаем настройки автозапуска первыми
+
+-- Автоматически создаем файл автозапуска если он включен
+if AUTOSTART_CONFIG.enabled then
+    setupAutostartFile()
+end
+
 loadMEKnowledge()
 loadConfig()
 
@@ -1534,6 +1641,16 @@ print("📚 Знаний ME: " .. (meKnowledge.items and #meKnowledge.items or 0
 print("⏱️ Время крафта: " .. tableLength(meKnowledge.craftTimes or {}))
 print("📋 История крафтов: " .. (meKnowledge.craftHistory and #meKnowledge.craftHistory or 0))
 print("🤖 Автозапуск: " .. (AUTOSTART_CONFIG.enabled and "🟢 ВКЛ" or "🔴 ВЫКЛ"))
+
+-- Проверяем файл автозапуска
+local startupFile = io.open(AUTOSTART_CONFIG.startupFile, "r")
+if startupFile then
+    startupFile:close()
+    print("📁 Файл автозапуска: 🟢 СУЩЕСТВУЕТ")
+else
+    print("📁 Файл автозапуска: 🔴 ОТСУТСТВУЕТ")
+end
+
 os.sleep(2)
 
 mainMenu()
