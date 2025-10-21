@@ -264,7 +264,7 @@ local function saveMEKnowledge()
     -- Добавляем только самые необходимые данные о предметах
     simpleData.items = {}
     if meKnowledge.items then
-        for i = 1, math.min(1800, #meKnowledge.items) do  -- Ограничиваем количество
+        for i = 1, math.min(3500, #meKnowledge.items) do  -- Ограничиваем количество
             local item = meKnowledge.items[i]
             if item then
                 table.insert(simpleData.items, {
@@ -279,7 +279,7 @@ local function saveMEKnowledge()
     -- Добавляем только базовую информацию о craftables
     simpleData.craftables = {}
     if meKnowledge.craftables then
-        for i = 1, math.min(800, #meKnowledge.craftables) do  -- Ограничиваем количество
+        for i = 1, math.min(1500, #meKnowledge.craftables) do  -- Ограничиваем количество
             local craftable = meKnowledge.craftables[i]
             if craftable and craftable.itemStack then
                 table.insert(simpleData.craftables, {
@@ -1642,3 +1642,4 @@ print("💾 Хранилище: " .. (STORAGE_CONFIG.useExternalStorage and "�
 os.sleep(2)
 
 mainMenu()
+
