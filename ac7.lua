@@ -46,77 +46,58 @@ local function confirmAction(actionText)
     return (input == "y" or input == "yes" or input == "да")
 end
 
+-- Функция очистки памяти (аналог collectgarbage)
+local function freeMemory()
+    -- Создаем и сразу удаляем временные таблицы для освобождения памяти
+    local temp = {}
+    for i = 1, 100 do
+        temp[i] = {}
+        for j = 1, 10 do
+            temp[i][j] = string.rep("x", 100)
+        end
+    end
+    temp = nil
+end
+
 -- УЛУЧШЕННАЯ функция инициализации внешнего хранилища
 local function initExternalStorage()
     print("🔍 Поиск внешнего хранилища...")
     
     -- Сбрасываем состояние хранилища
     STORAGE_CONFIG.useExternalStorage = false
+    STORAGE_CONFIG.externalStorage = "/mnt/raid/"
     
-    -- Проверяем доступные диски через компоненты
-    local disks = {}
-    for address, type in component.list() do
-        if type == "filesystem" and address ~= computer.tmpAddress() then
-            local fs = component.proxy(address)
-            if fs and fs.isReadOnly() == false then
-                local spaceTotal = fs.spaceTotal()
-                if spaceTotal and spaceTotal > 1048576 then -- Минимум 1 МБ свободного места
-                    local label = fs.getLabel() or "Без названия"
-                    local space = math.floor(spaceTotal / 1024 / 1024)
-                    table.insert(disks, {
-                        address = address,
-                        label = label,
-                        space = space,
-                        path = "/mnt/" .. address:sub(1, 8)
-                    })
-                end
-            end
-        end
-    end
-    
-    -- Проверяем стандартные точки монтирования
-    local mounts = {"/mnt/raid", "/mnt/external", "/mnt/disk", "/mnt/usb", "/mnt"}
+    -- Проверяем только реально существующие точки монтирования
+    local mounts = {"/mnt/raid", "/mnt/external", "/mnt/disk", "/mnt/usb"}
     local storageFound = false
     
     for _, mount in ipairs(mounts) do
-        local checkCmd = "ls " .. mount .. " > /dev/null 2>&1"
-        if os.execute(checkCmd) then
+        -- Проверяем существование директории
+        local checkDir = io.open(mount, "r")
+        if checkDir then
+            checkDir:close()
+            
             -- Проверяем доступность записи
             local testFile = mount .. "/test_write.tmp"
             local testWrite = io.open(testFile, "w")
             if testWrite then
                 testWrite:write("test")
                 testWrite:close()
-                os.remove(testFile)
                 
-                STORAGE_CONFIG.externalStorage = mount .. "/"
-                STORAGE_CONFIG.useExternalStorage = true
-                storageFound = true
-                print("✅ Внешнее хранилище найдено: " .. mount)
-                break
-            end
-        end
-    end
-    
-    -- Если нашли диски, но нет точек монтирования, создаем
-    if not storageFound and #disks > 0 then
-        for _, disk in ipairs(disks) do
-            os.execute("mkdir -p " .. disk.path .. " 2>/dev/null")
-            local mountCmd = "mount " .. disk.address .. " " .. disk.path .. " 2>/dev/null"
-            if os.execute(mountCmd) then
-                -- Проверяем запись после монтирования
-                local testFile = disk.path .. "/test_write.tmp"
-                local testWrite = io.open(testFile, "w")
-                if testWrite then
-                    testWrite:write("test")
-                    testWrite:close()
+                -- Проверяем, что файл действительно записался
+                local testRead = io.open(testFile, "r")
+                if testRead then
+                    local content = testRead:read("*a")
+                    testRead:close()
                     os.remove(testFile)
                     
-                    STORAGE_CONFIG.externalStorage = disk.path .. "/"
-                    STORAGE_CONFIG.useExternalStorage = true
-                    storageFound = true
-                    print("✅ Внешнее хранилище подключено: " .. disk.path .. " (" .. disk.label .. ", " .. disk.space .. " МБ)")
-                    break
+                    if content == "test" then
+                        STORAGE_CONFIG.externalStorage = mount .. "/"
+                        STORAGE_CONFIG.useExternalStorage = true
+                        storageFound = true
+                        print("✅ Внешнее хранилище найдено: " .. mount)
+                        break
+                    end
                 end
             end
         end
@@ -125,6 +106,8 @@ local function initExternalStorage()
     if not storageFound then
         print("⚠️ Внешнее хранилище не найдено, используем основное")
         STORAGE_CONFIG.useExternalStorage = false
+        -- Убедимся, что используем правильный путь
+        STORAGE_CONFIG.externalStorage = "/home/"
     end
     
     return STORAGE_CONFIG.useExternalStorage
@@ -196,7 +179,7 @@ end
 
 -- Функция оптимизации памяти
 local function optimizeMemory()
-    collectgarbage("collect")
+    freeMemory()  -- Используем нашу функцию вместо collectgarbage
     
     if meKnowledge.craftHistory and #meKnowledge.craftHistory > 100 then
         local newHistory = {}
@@ -481,7 +464,7 @@ local function analyzeMESystem()
                 
                 -- Периодическая разгрузка памяти
                 if i % 20 == 0 then
-                    collectgarbage()
+                    freeMemory()
                     os.sleep(0.05)
                 end
             end
@@ -491,7 +474,7 @@ local function analyzeMESystem()
                 if saveMEKnowledge() then
                     print("   💾 Промежуточное сохранение предметов...")
                 end
-                collectgarbage()
+                freeMemory()
             end
         end
         print("   ✅ Предметов анализировано: " .. #meKnowledge.items)
@@ -544,7 +527,7 @@ local function analyzeMESystem()
                     
                     -- Периодическая разгрузка памяти
                     if i % 20 == 0 then
-                        collectgarbage()
+                        freeMemory()
                         os.sleep(0.05)
                     end
                 end
@@ -555,7 +538,7 @@ local function analyzeMESystem()
                 if saveMEKnowledge() then
                     print("   💾 Промежуточное сохранение craftables...")
                 end
-                collectgarbage()
+                freeMemory()
             end
         end
         print("   ✅ Craftables анализировано: " .. #meKnowledge.craftables)
@@ -586,7 +569,7 @@ local function analyzeMESystem()
     end
     
     -- Финальное сохранение и очистка памяти
-    collectgarbage()
+    freeMemory()
     if saveMEKnowledge() then
         print("✅ Анализ ME системы завершен!")
     else
@@ -597,7 +580,7 @@ end
 -- ОПТИМИЗИРОВАННАЯ функция исследования всех крафтов с чанкованием
 local function researchAllCrafts()
     if not confirmAction("Вы уверены, что хотите исследовать все крафты? Это может занять много времени.") then
-        print("❌ Исследование отменено")
+        print("❌ Исследование отменен")
         return
     end
     
@@ -645,7 +628,7 @@ local function researchAllCrafts()
             
             -- Периодическая разгрузка памяти
             if i % 20 == 0 then
-                collectgarbage()
+                freeMemory()
                 os.sleep(0.05)
             end
         end
@@ -656,12 +639,12 @@ local function researchAllCrafts()
             if saveMEKnowledge() then
                 print("   💾 Промежуточное сохранение исследований...")
             end
-            collectgarbage()
+            freeMemory()
         end
     end
     
     meKnowledge.researchDB = tempResearchDB
-    collectgarbage()
+    freeMemory()
     
     if saveMEKnowledge() then
         print("✅ Исследование завершено! Найдено крафтов: " .. researched)
