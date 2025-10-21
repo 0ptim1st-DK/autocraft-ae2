@@ -10,7 +10,7 @@ local STORAGE_CONFIG = {
     primaryStorage = "/home/",
     externalStorage = "/mnt/raid/",
     maxMemoryItems = 5000,
-    chunkSize = 100,
+    chunkSize = 50,
     useExternalStorage = false
 }
 
@@ -1597,3 +1597,4 @@ print("💾 Хранилище: " .. (STORAGE_CONFIG.useExternalStorage and "�
 os.sleep(2)
 
 mainMenu()
+
