@@ -10,7 +10,7 @@ local STORAGE_CONFIG = {
     primaryStorage = "/home/",
     externalStorage = "/mnt/raid/",
     maxMemoryItems = 5000,
-    chunkSize = 25,
+    chunkSize = 15,
     useExternalStorage = false
 }
 
@@ -50,10 +50,10 @@ end
 local function freeMemory()
     -- Создаем и сразу удаляем временные таблицы для освобождения памяти
     local temp = {}
-    for i = 1, 100 do
+    for i = 1, 45 do
         temp[i] = {}
         for j = 1, 10 do
-            temp[i][j] = string.rep("x", 100)
+            temp[i][j] = string.rep("x", 45)
         end
     end
     temp = nil
@@ -181,9 +181,9 @@ end
 local function optimizeMemory()
     freeMemory()  -- Используем нашу функцию вместо collectgarbage
     
-    if meKnowledge.craftHistory and #meKnowledge.craftHistory > 100 then
+    if meKnowledge.craftHistory and #meKnowledge.craftHistory > 45 then
         local newHistory = {}
-        for i = math.max(1, #meKnowledge.craftHistory - 99), #meKnowledge.craftHistory do
+        for i = math.max(1, #meKnowledge.craftHistory - 44), #meKnowledge.craftHistory do
             table.insert(newHistory, meKnowledge.craftHistory[i])
         end
         meKnowledge.craftHistory = newHistory
@@ -470,7 +470,7 @@ local function analyzeMESystem()
             end
             
             -- Промежуточное сохранение каждые 200 предметов
-            if chunkEnd % 200 == 0 then
+            if chunkEnd % 15 == 0 then
                 if saveMEKnowledge() then
                     print("   💾 Промежуточное сохранение предметов...")
                 end
@@ -526,7 +526,7 @@ local function analyzeMESystem()
                     table.insert(meKnowledge.craftables, craftableInfo)
                     
                     -- Периодическая разгрузка памяти
-                    if i % 20 == 0 then
+                    if i % 15 == 0 then
                         freeMemory()
                         os.sleep(0.05)
                     end
@@ -534,7 +534,7 @@ local function analyzeMESystem()
             end
             
             -- Промежуточное сохранение каждые 100 craftables
-            if chunkEnd % 25 == 0 then
+            if chunkEnd % 15 == 0 then
                 if saveMEKnowledge() then
                     print("   💾 Промежуточное сохранение craftables...")
                 end
@@ -627,14 +627,14 @@ local function researchAllCrafts()
             end
             
             -- Периодическая разгрузка памяти
-            if i % 20 == 0 then
+            if i % 15 == 0 then
                 freeMemory()
                 os.sleep(0.05)
             end
         end
         
         -- Промежуточное сохранение каждые 100 исследованных крафтов
-        if chunkEnd % 25 == 0 then
+        if chunkEnd % 15 == 0 then
             meKnowledge.researchDB = tempResearchDB
             if saveMEKnowledge() then
                 print("   💾 Промежуточное сохранение исследований...")
@@ -1632,4 +1632,5 @@ print("💾 Хранилище: " .. (STORAGE_CONFIG.useExternalStorage and "�
 os.sleep(2)
 
 mainMenu()
+
 
