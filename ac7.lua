@@ -25,9 +25,9 @@ local craftThread = nil
 local craftingEnabled = false
 
 local craftDB = {}  
-local configFile = "/home/craft_config.dat"
+local configFile = "/craft_config.dat"
 
-local meKnowledgeFile = "/home/me_knowledge.dat"
+local meKnowledgeFile = "/me_knowledge.dat"
 local meKnowledge = {
     items = {},          
     craftables = {},     
@@ -59,47 +59,51 @@ local function tableLength(tbl)
     return count
 end
 
--- НАДЕЖНАЯ функция загрузки базы знаний
+-- УЛУЧШЕННАЯ функция загрузки базы знаний
 local function loadMEKnowledge()
     local file = io.open(meKnowledgeFile, "r")
     if file then
         local data = file:read("*a")
         file:close()
-        local success, loaded = pcall(serialization.unserialize, data)
-        if success and loaded then
-            meKnowledge.items = loaded.items or {}
-            meKnowledge.craftables = loaded.craftables or {}
-            meKnowledge.cpus = loaded.cpus or {}
-            meKnowledge.patterns = loaded.patterns or {}
-            meKnowledge.craftTimes = loaded.craftTimes or {}
-            meKnowledge.craftHistory = loaded.craftHistory or {}
-            meKnowledge.researchDB = loaded.researchDB or {}
-            
-            print("📚 База знаний ME системы загружена")
-            print("   Предметы: " .. #meKnowledge.items)
-            print("   Крафты: " .. #meKnowledge.craftables)
-            print("   Паттерны: " .. tableLength(meKnowledge.patterns))
-            return true
+        if data and data ~= "" then
+            local success, loaded = pcall(serialization.unserialize, data)
+            if success and loaded then
+                meKnowledge.items = loaded.items or {}
+                meKnowledge.craftables = loaded.craftables or {}
+                meKnowledge.cpus = loaded.cpus or {}
+                meKnowledge.patterns = loaded.patterns or {}
+                meKnowledge.craftTimes = loaded.craftTimes or {}
+                meKnowledge.craftHistory = loaded.craftHistory or {}
+                meKnowledge.researchDB = loaded.researchDB or {}
+                
+                print("✅ База знаний ME системы загружена")
+                print("   Предметы: " .. #meKnowledge.items)
+                print("   Крафты: " .. #meKnowledge.craftables)
+                print("   Паттерны: " .. tableLength(meKnowledge.patterns))
+                return true
+            else
+                print("❌ Ошибка десериализации базы знаний")
+            end
         else
-            print("❌ Ошибка загрузки базы знаний")
+            print("📁 Файл базы знаний пуст")
         end
     else
-        print("📚 Файл базы знаний не найден")
+        print("📁 Файл базы знаний не найден")
     end
     return false
 end
 
--- НАДЕЖНАЯ функция сохранения базы знаний
+-- УЛУЧШЕННАЯ функция сохранения базы знаний
 local function saveMEKnowledge()
     local success = false
     
+    -- Создаем упрощенные данные для сохранения
     local saveData = {
         items = {},
         craftables = {},
         cpus = meKnowledge.cpus or {},
         patterns = meKnowledge.patterns or {},
         craftTimes = meKnowledge.craftTimes or {},
-        craftHistory = meKnowledge.craftHistory or {},
         researchDB = meKnowledge.researchDB or {}
     }
     
@@ -133,7 +137,8 @@ local function saveMEKnowledge()
         end
     end
     
-    for attempt = 1, 3 do
+    -- Пытаемся сохранить с обработкой ошибок
+    for attempt = 1, 5 do
         local file = io.open(meKnowledgeFile, "w")
         if file then
             local ok, serialized = pcall(serialization.serialize, saveData)
@@ -144,9 +149,10 @@ local function saveMEKnowledge()
                 break
             else
                 file:close()
+                print("⚠️ Попытка сохранения " .. attempt .. " не удалась")
             end
         end
-        os.sleep(0.5)
+        os.sleep(0.3)
     end
     
     return success
@@ -157,16 +163,19 @@ local function loadConfig()
     if file then
         local data = file:read("*a")
         file:close()
-        local success, loaded = pcall(serialization.unserialize, data)
-        if success and loaded then
-            craftDB = loaded
-            print("Загружено автокрафтов: " .. tableLength(craftDB))
-        else
-            craftDB = {}
+        if data and data ~= "" then
+            local success, loaded = pcall(serialization.unserialize, data)
+            if success and loaded then
+                craftDB = loaded
+                print("✅ Загружено автокрафтов: " .. tableLength(craftDB))
+                return true
+            else
+                print("❌ Ошибка загрузки конфига")
+            end
         end
-    else
-        craftDB = {}
     end
+    craftDB = {}
+    return false
 end
 
 local function saveConfig()
@@ -174,18 +183,30 @@ local function saveConfig()
     for attempt = 1, 3 do
         local file = io.open(configFile, "w")
         if file then
-            file:write(serialization.serialize(craftDB))
-            file:close()
-            success = true
-            break
+            local ok, serialized = pcall(serialization.serialize, craftDB)
+            if ok and serialized then
+                file:write(serialized)
+                file:close()
+                success = true
+                break
+            else
+                file:close()
+            end
         end
-        os.sleep(0.5)
+        os.sleep(0.2)
     end
     return success
 end
 
 -- УЛУЧШЕННЫЙ показ страниц (35 строк)
 local function showPaginated(data, title, itemsPerPage)
+    if not data or #data == 0 then
+        print("   Нет данных для отображения")
+        print("\nНажмите Enter для продолжения...")
+        io.read()
+        return
+    end
+    
     itemsPerPage = itemsPerPage or 35
     local totalPages = math.ceil(#data / itemsPerPage)
     local currentPage = 1
@@ -260,7 +281,6 @@ local function analyzeMESystem()
             
             if chunkEnd % 200 == 0 then
                 print("   Обработано: " .. chunkEnd .. "/" .. itemCount)
-                saveMEKnowledge()
             end
         end
         print("✅ Предметов проанализировано: " .. #meKnowledge.items)
@@ -318,7 +338,6 @@ local function analyzeMESystem()
             
             if chunkEnd % 100 == 0 then
                 print("   Исследовано крафтов: " .. researched .. "/" .. craftableCount)
-                saveMEKnowledge()
             end
         end
         
@@ -967,9 +986,9 @@ local function mainMenu()
         print("=== 🧠 УМНАЯ СИСТЕМА ПОДДЕРЖКИ АВТОКРАФТА ===")
         print()
         
-        -- Статус системы
+        -- Статус системы (ИСПРАВЛЕННАЯ СТРОКА)
         local statusIcon = craftingEnabled and "🟢" or "🔴"
-        print(statusIcon .. " Поддержка автокрафта: " .. (crafttingEnabled and "ВКЛЮЧЕНА" or "ВЫКЛЮЧЕНА"))
+        print(statusIcon .. " Поддержка автокрафта: " .. (craftingEnabled and "ВКЛЮЧЕНА" or "ВЫКЛЮЧЕНА"))
         print("📊 Автокрафтов: " .. tableLength(craftDB))
         print("📚 База знаний: " .. (meKnowledge.items and #meKnowledge.items or 0) .. " предметов, " .. 
               (meKnowledge.craftables and #meKnowledge.craftables or 0) .. " крафтов")
@@ -1026,19 +1045,19 @@ end
 
 -- ИНИЦИАЛИЗАЦИЯ СИСТЕМЫ
 print("Загрузка умной системы поддержки автокрафта...")
-loadMEKnowledge()
 loadConfig()
+loadMEKnowledge()
 
--- Автоанализ если база пуста
+-- Автоанализ только если база действительно пуста
 if (not meKnowledge.items or #meKnowledge.items == 0) and running then
     print("🔄 База знаний пуста, выполняется первоначальный анализ...")
     analyzeMESystem()
+else
+    print("✅ Система готова к работе!")
+    print("📊 Загружено автокрафтов: " .. tableLength(craftDB))
+    print("📚 База знаний: " .. (meKnowledge.items and #meKnowledge.items or 0) .. " предметов")
+    print("⏱️ Время крафта: " .. tableLength(meKnowledge.craftTimes or {}) .. " записей")
+    os.sleep(2)
 end
-
-print("✅ Система готова к работе!")
-print("📊 Загружено автокрафтов: " .. tableLength(craftDB))
-print("📚 База знаний: " .. (meKnowledge.items and #meKnowledge.items or 0) .. " предметов")
-print("⏱️ Время крафта: " .. tableLength(meKnowledge.craftTimes or {}) .. " записей")
-os.sleep(2)
 
 mainMenu()
