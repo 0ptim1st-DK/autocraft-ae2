@@ -10,7 +10,7 @@ local STORAGE_CONFIG = {
     primaryStorage = "/home/",
     externalStorage = "/mnt/raid/",
     maxMemoryItems = 5000,
-    chunkSize = 50,
+    chunkSize = 100,
     useExternalStorage = false
 }
 
@@ -46,71 +46,41 @@ local function confirmAction(actionText)
     return (input == "y" or input == "yes" or input == "да")
 end
 
--- ИСПРАВЛЕННАЯ функция инициализации внешнего хранилища
+-- УЛУЧШЕННАЯ функция инициализации внешнего хранилища
 local function initExternalStorage()
     print("🔍 Поиск внешнего хранилища...")
     
+    -- Сбрасываем состояние хранилища
     STORAGE_CONFIG.useExternalStorage = false
     
-    -- Сначала проверяем доступные файловые системы через компоненты
-    local availableDisks = {}
+    -- Проверяем доступные диски через компоненты
+    local disks = {}
     for address, type in component.list() do
         if type == "filesystem" and address ~= computer.tmpAddress() then
             local fs = component.proxy(address)
             if fs and fs.isReadOnly() == false then
-                local label = fs.getLabel() or "Без названия"
-                local space = math.floor(fs.spaceTotal() / 1024 / 1024)
-                local mountPath = "/mnt/" .. address:sub(1, 8)
-                
-                table.insert(availableDisks, {
-                    address = address,
-                    label = label,
-                    space = space,
-                    path = mountPath,
-                    fs = fs
-                })
+                local spaceTotal = fs.spaceTotal()
+                if spaceTotal and spaceTotal > 1048576 then -- Минимум 1 МБ свободного места
+                    local label = fs.getLabel() or "Без названия"
+                    local space = math.floor(spaceTotal / 1024 / 1024)
+                    table.insert(disks, {
+                        address = address,
+                        label = label,
+                        space = space,
+                        path = "/mnt/" .. address:sub(1, 8)
+                    })
+                end
             end
         end
     end
     
-    -- Пробуем смонтировать найденные диски
-    for _, disk in ipairs(availableDisks) do
-        -- Создаем директорию для монтирования
-        os.execute("mkdir -p " .. disk.path .. " 2>/dev/null")
-        
-        -- Пробуем монтировать
-        local mountSuccess = os.execute("mount " .. disk.address .. " " .. disk.path .. " 2>/dev/null")
-        
-        if mountSuccess then
-            -- Проверяем доступность записи
-            local testFile = disk.path .. "/test_write.tmp"
-            local testWrite = io.open(testFile, "w")
-            if testWrite then
-                testWrite:write("test")
-                testWrite:close()
-                os.remove(testFile)
-                
-                STORAGE_CONFIG.externalStorage = disk.path .. "/"
-                STORAGE_CONFIG.useExternalStorage = true
-                print("✅ Внешнее хранилище подключено: " .. disk.path)
-                print("   📝 Метка: " .. disk.label)
-                print("   💾 Объем: " .. disk.space .. " МБ")
-                return true
-            else
-                -- Размонтируем если нет доступа на запись
-                os.execute("umount " .. disk.path .. " 2>/dev/null")
-            end
-        end
-    end
+    -- Проверяем стандартные точки монтирования
+    local mounts = {"/mnt/raid", "/mnt/external", "/mnt/disk", "/mnt/usb", "/mnt"}
+    local storageFound = false
     
-    -- Проверяем стандартные точки монтирования (только если они реально существуют)
-    local mounts = {"/mnt/raid", "/mnt/external", "/mnt/disk", "/mnt/usb", "/mnt/data"}
     for _, mount in ipairs(mounts) do
-        -- Проверяем существование директории
-        local checkDir = io.open(mount, "r")
-        if checkDir then
-            checkDir:close()
-            
+        local checkCmd = "ls " .. mount .. " > /dev/null 2>&1"
+        if os.execute(checkCmd) then
             -- Проверяем доступность записи
             local testFile = mount .. "/test_write.tmp"
             local testWrite = io.open(testFile, "w")
@@ -121,15 +91,43 @@ local function initExternalStorage()
                 
                 STORAGE_CONFIG.externalStorage = mount .. "/"
                 STORAGE_CONFIG.useExternalStorage = true
+                storageFound = true
                 print("✅ Внешнее хранилище найдено: " .. mount)
-                return true
+                break
             end
         end
     end
     
-    print("⚠️ Внешнее хранилище не найдено, используем основное")
-    STORAGE_CONFIG.useExternalStorage = false
-    return false
+    -- Если нашли диски, но нет точек монтирования, создаем
+    if not storageFound and #disks > 0 then
+        for _, disk in ipairs(disks) do
+            os.execute("mkdir -p " .. disk.path .. " 2>/dev/null")
+            local mountCmd = "mount " .. disk.address .. " " .. disk.path .. " 2>/dev/null"
+            if os.execute(mountCmd) then
+                -- Проверяем запись после монтирования
+                local testFile = disk.path .. "/test_write.tmp"
+                local testWrite = io.open(testFile, "w")
+                if testWrite then
+                    testWrite:write("test")
+                    testWrite:close()
+                    os.remove(testFile)
+                    
+                    STORAGE_CONFIG.externalStorage = disk.path .. "/"
+                    STORAGE_CONFIG.useExternalStorage = true
+                    storageFound = true
+                    print("✅ Внешнее хранилище подключено: " .. disk.path .. " (" .. disk.label .. ", " .. disk.space .. " МБ)")
+                    break
+                end
+            end
+        end
+    end
+    
+    if not storageFound then
+        print("⚠️ Внешнее хранилище не найдено, используем основное")
+        STORAGE_CONFIG.useExternalStorage = false
+    end
+    
+    return STORAGE_CONFIG.useExternalStorage
 end
 
 -- Функция получения пути с учетом внешнего хранилища
@@ -198,6 +196,8 @@ end
 
 -- Функция оптимизации памяти
 local function optimizeMemory()
+    collectgarbage("collect")
+    
     if meKnowledge.craftHistory and #meKnowledge.craftHistory > 100 then
         local newHistory = {}
         for i = math.max(1, #meKnowledge.craftHistory - 99), #meKnowledge.craftHistory do
@@ -435,7 +435,7 @@ local function showPaginated(data, title, itemsPerPage)
     end
 end
 
--- ОБНОВЛЕННАЯ функция анализа ME системы с очисткой данных
+-- ОПТИМИЗИРОВАННАЯ функция анализа ME системы с очисткой данных и чанкованием
 local function analyzeMESystem()
     if not confirmAction("Вы уверены, что хотите выполнить анализ ME системы? Это может занять некоторое время.") then
         print("❌ Анализ отменен")
@@ -456,7 +456,7 @@ local function analyzeMESystem()
     if not meKnowledge.craftHistory then meKnowledge.craftHistory = {} end
     if not meKnowledge.researchDB then meKnowledge.researchDB = {} end
     
-    -- Анализ предметов по чанкам
+    -- Анализ предметов по чанкам с промежуточным сохранением
     local success, items = pcall(me.getItemsInNetwork)
     if success and items then
         meKnowledge.items = {}
@@ -466,7 +466,7 @@ local function analyzeMESystem()
         -- Обрабатываем предметы чанками
         for chunkStart = 1, itemCount, STORAGE_CONFIG.chunkSize do
             local chunkEnd = math.min(chunkStart + STORAGE_CONFIG.chunkSize - 1, itemCount)
-            print("   Обработка чанка: " .. chunkStart .. "-" .. chunkEnd)
+            print("   Обработка чанка предметов: " .. chunkStart .. "-" .. chunkEnd)
             
             for i = chunkStart, chunkEnd do
                 local item = items[i]
@@ -479,16 +479,19 @@ local function analyzeMESystem()
                     table.insert(meKnowledge.items, itemInfo)
                 end
                 
+                -- Периодическая разгрузка памяти
                 if i % 20 == 0 then
+                    collectgarbage()
                     os.sleep(0.05)
                 end
             end
             
-            -- Сохраняем промежуточные результаты каждые 200 предметов
+            -- Промежуточное сохранение каждые 200 предметов
             if chunkEnd % 200 == 0 then
                 if saveMEKnowledge() then
-                    print("   💾 Промежуточное сохранение...")
+                    print("   💾 Промежуточное сохранение предметов...")
                 end
+                collectgarbage()
             end
         end
         print("   ✅ Предметов анализировано: " .. #meKnowledge.items)
@@ -496,43 +499,63 @@ local function analyzeMESystem()
         print("   ❌ Ошибка анализа предметов")
     end
     
-    -- Анализ craftables с оптимизацией
+    -- ОПТИМИЗИРОВАННЫЙ анализ craftables с чанкованием
     print("   🛠️ Анализ craftables...")
     local success, craftables = pcall(me.getCraftables)
     if success and craftables then
         meKnowledge.craftables = {}
-        for i, craftable in ipairs(craftables) do
-            if craftable then
-                local craftableInfo = {
-                    index = i,
-                    methods = {},
-                    fields = {}
-                }
-                
-                if craftable.request then craftableInfo.methods.request = true end
-                if craftable.getItemStack then craftableInfo.methods.getItemStack = true end
-                
-                -- Только базовая информация
-                if craftable.getItemStack then
-                    local itemSuccess, itemStack = pcall(craftable.getItemStack)
-                    if itemSuccess and itemStack then
-                        craftableInfo.itemStack = {
-                            name = itemStack.name or "unknown",
-                            label = itemStack.label or "нет",
-                            size = itemStack.size or 1
-                        }
-                        
-                        if itemStack.name then
-                            meKnowledge.patterns[itemStack.name] = i
+        local craftableCount = #craftables
+        print("   📋 Всего craftables: " .. craftableCount)
+        
+        -- Обрабатываем craftables чанками
+        for chunkStart = 1, craftableCount, STORAGE_CONFIG.chunkSize do
+            local chunkEnd = math.min(chunkStart + STORAGE_CONFIG.chunkSize - 1, craftableCount)
+            print("   Обработка чанка craftables: " .. chunkStart .. "-" .. chunkEnd)
+            
+            for i = chunkStart, chunkEnd do
+                local craftable = craftables[i]
+                if craftable then
+                    local craftableInfo = {
+                        index = i,
+                        methods = {},
+                        fields = {}
+                    }
+                    
+                    if craftable.request then craftableInfo.methods.request = true end
+                    if craftable.getItemStack then craftableInfo.methods.getItemStack = true end
+                    
+                    -- Только базовая информация
+                    if craftable.getItemStack then
+                        local itemSuccess, itemStack = pcall(craftable.getItemStack)
+                        if itemSuccess and itemStack then
+                            craftableInfo.itemStack = {
+                                name = itemStack.name or "unknown",
+                                label = itemStack.label or "нет",
+                                size = itemStack.size or 1
+                            }
+                            
+                            if itemStack.name then
+                                meKnowledge.patterns[itemStack.name] = i
+                            end
                         end
                     end
+                    
+                    table.insert(meKnowledge.craftables, craftableInfo)
+                    
+                    -- Периодическая разгрузка памяти
+                    if i % 20 == 0 then
+                        collectgarbage()
+                        os.sleep(0.05)
+                    end
                 end
-                
-                table.insert(meKnowledge.craftables, craftableInfo)
-                
-                if i % 20 == 0 then
-                    os.sleep(0.05)
+            end
+            
+            -- Промежуточное сохранение каждые 100 craftables
+            if chunkEnd % 100 == 0 then
+                if saveMEKnowledge() then
+                    print("   💾 Промежуточное сохранение craftables...")
                 end
+                collectgarbage()
             end
         end
         print("   ✅ Craftables анализировано: " .. #meKnowledge.craftables)
@@ -562,6 +585,8 @@ local function analyzeMESystem()
         print("   ❌ Ошибка анализа ЦП")
     end
     
+    -- Финальное сохранение и очистка памяти
+    collectgarbage()
     if saveMEKnowledge() then
         print("✅ Анализ ME системы завершен!")
     else
@@ -569,7 +594,7 @@ local function analyzeMESystem()
     end
 end
 
--- ОБНОВЛЕННАЯ функция исследования всех крафтов с подтверждением
+-- ОПТИМИЗИРОВАННАЯ функция исследования всех крафтов с чанкованием
 local function researchAllCrafts()
     if not confirmAction("Вы уверены, что хотите исследовать все крафты? Это может занять много времени.") then
         print("❌ Исследование отменено")
@@ -586,31 +611,58 @@ local function researchAllCrafts()
     
     local researched = 0
     local tempResearchDB = {}
+    local craftableCount = #craftables
     
-    for i, craftable in ipairs(craftables) do
-        if craftable and craftable.getItemStack then
-            local itemSuccess, itemStack = pcall(craftable.getItemStack)
-            if itemSuccess and itemStack and itemStack.name then
-                local itemInfo = {
-                    craftableIndex = i,
-                    itemID = itemStack.name,
-                    label = itemStack.label or "Без названия",
-                    size = itemStack.size or 1
-                }
-                
-                table.insert(tempResearchDB, itemInfo)
-                researched = researched + 1
-                
-                meKnowledge.patterns[itemStack.name] = i
-                
-                if researched % 50 == 0 then
-                    print("   ✅ Исследовано: " .. researched .. " крафтов")
+    print("   📋 Всего craftables для исследования: " .. craftableCount)
+    
+    -- Исследуем craftables чанками
+    for chunkStart = 1, craftableCount, STORAGE_CONFIG.chunkSize do
+        local chunkEnd = math.min(chunkStart + STORAGE_CONFIG.chunkSize - 1, craftableCount)
+        print("   Исследование чанка: " .. chunkStart .. "-" .. chunkEnd)
+        
+        for i = chunkStart, chunkEnd do
+            local craftable = craftables[i]
+            if craftable and craftable.getItemStack then
+                local itemSuccess, itemStack = pcall(craftable.getItemStack)
+                if itemSuccess and itemStack and itemStack.name then
+                    local itemInfo = {
+                        craftableIndex = i,
+                        itemID = itemStack.name,
+                        label = itemStack.label or "Без названия",
+                        size = itemStack.size or 1
+                    }
+                    
+                    table.insert(tempResearchDB, itemInfo)
+                    researched = researched + 1
+                    
+                    meKnowledge.patterns[itemStack.name] = i
+                    
+                    if researched % 50 == 0 then
+                        print("   ✅ Исследовано: " .. researched .. " крафтов")
+                    end
                 end
             end
+            
+            -- Периодическая разгрузка памяти
+            if i % 20 == 0 then
+                collectgarbage()
+                os.sleep(0.05)
+            end
+        end
+        
+        -- Промежуточное сохранение каждые 100 исследованных крафтов
+        if chunkEnd % 100 == 0 then
+            meKnowledge.researchDB = tempResearchDB
+            if saveMEKnowledge() then
+                print("   💾 Промежуточное сохранение исследований...")
+            end
+            collectgarbage()
         end
     end
     
     meKnowledge.researchDB = tempResearchDB
+    collectgarbage()
+    
     if saveMEKnowledge() then
         print("✅ Исследование завершено! Найдено крафтов: " .. researched)
     else
@@ -1597,4 +1649,3 @@ print("💾 Хранилище: " .. (STORAGE_CONFIG.useExternalStorage and "�
 os.sleep(2)
 
 mainMenu()
-
