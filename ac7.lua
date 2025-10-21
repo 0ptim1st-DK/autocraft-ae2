@@ -79,18 +79,19 @@ local function loadDataFromFile(filename)
     return nil
 end
 
--- Функция очистки памяти
+-- Функция очистки памяти (без collectgarbage)
 local function freeMemory()
-    collectgarbage()
+    -- Простая очистка через создание и удаление временных данных
     local temp = {}
-    for i = 1, 10 do
+    for i = 1, 5 do  -- Еще больше уменьшил для экономии памяти
         temp[i] = {}
         for j = 1, 2 do
-            temp[i][j] = string.rep("x", 10)
+            temp[i][j] = string.rep("x", 5)
         end
     end
     temp = nil
-    collectgarbage()
+    -- В OpenComputers 1.7.10 нет collectgarbage(), поэтому просто ждем
+    os.sleep(0.05)
 end
 
 -- ПОЭТАПНОЕ СОХРАНЕНИЕ БОЛЬШИХ ТАБЛИЦ ЧАНКАМИ
@@ -354,7 +355,7 @@ local function showPaginated(data, title, itemsPerPage)
     end
 end
 
--- ОПТИМИЗИРОВАННЫЙ АНАЛИЗ ME СИСТЕМЫ
+-- ОПТИМИЗИРОВАННЫЙ АНАЛИЗ ME СИСТЕМЫ (БЕЗ collectgarbage)
 local function analyzeMESystem()
     print("🔍 Запуск анализа ME системы...")
     
@@ -362,7 +363,6 @@ local function analyzeMESystem()
     meKnowledge.items = {}
     meKnowledge.craftables = {}
     meKnowledge.patterns = {}
-    collectgarbage()
     
     -- Анализ предметов
     print("📦 Анализ предметов...")
