@@ -59,55 +59,65 @@ local function tableLength(tbl)
     return count
 end
 
--- УЛУЧШЕННАЯ функция загрузки базы знаний
+-- УЛУЧШЕННАЯ функция загрузки базы знаний (из ac60.lua)
 local function loadMEKnowledge()
-    local file = io.open(meKnowledgeFile, "r")
-    if file then
-        local data = file:read("*a")
-        file:close()
-        if data and data ~= "" then
-            local success, loaded = pcall(serialization.unserialize, data)
-            if success and loaded then
-                meKnowledge.items = loaded.items or {}
-                meKnowledge.craftables = loaded.craftables or {}
-                meKnowledge.cpus = loaded.cpus or {}
-                meKnowledge.patterns = loaded.patterns or {}
-                meKnowledge.craftTimes = loaded.craftTimes or {}
-                meKnowledge.craftHistory = loaded.craftHistory or {}
-                meKnowledge.researchDB = loaded.researchDB or {}
-                
-                print("✅ База знаний ME системы загружена")
-                print("   Предметы: " .. #meKnowledge.items)
-                print("   Крафты: " .. #meKnowledge.craftables)
-                print("   Паттерны: " .. tableLength(meKnowledge.patterns))
-                return true
-            else
-                print("❌ Ошибка десериализации базы знаний")
+    local paths = {
+        meKnowledgeFile,
+        "/home/me_knowledge.dat"
+    }
+    
+    for _, path in ipairs(paths) do
+        local file = io.open(path, "r")
+        if file then
+            local data = file:read("*a")
+            file:close()
+            if data and data ~= "" then
+                local success, loaded = pcall(serialization.unserialize, data)
+                if success and loaded then
+                    meKnowledge = {
+                        items = loaded.items or {},
+                        craftables = loaded.craftables or {},
+                        cpus = loaded.cpus or {},
+                        patterns = loaded.patterns or {},
+                        craftTimes = loaded.craftTimes or {},
+                        craftHistory = loaded.craftHistory or {},
+                        researchDB = loaded.researchDB or {}
+                    }
+                    print("✅ База знаний ME системы загружена")
+                    print("   Предметы: " .. #meKnowledge.items)
+                    print("   Крафты: " .. #meKnowledge.craftables)
+                    print("   Паттерны: " .. tableLength(meKnowledge.patterns))
+                    return true
+                end
             end
-        else
-            print("📁 Файл базы знаний пуст")
         end
-    else
-        print("📁 Файл базы знаний не найден")
     end
+    
+    print("📁 Файл базы знаний не найден или поврежден")
+    meKnowledge = {
+        items = {}, craftables = {}, cpus = {}, 
+        patterns = {}, craftTimes = {}, craftHistory = {}, researchDB = {}
+    }
     return false
 end
 
--- УЛУЧШЕННАЯ функция сохранения базы знаний
+-- УЛУЧШЕННАЯ функция сохранения базы знаний (надежный метод)
 local function saveMEKnowledge()
+    -- Сохраняем данные небольшими частями
     local success = false
     
-    -- Создаем упрощенные данные для сохранения
+    -- Создаем облегченную копию для сохранения
     local saveData = {
         items = {},
         craftables = {},
         cpus = meKnowledge.cpus or {},
         patterns = meKnowledge.patterns or {},
         craftTimes = meKnowledge.craftTimes or {},
+        craftHistory = {},
         researchDB = meKnowledge.researchDB or {}
     }
     
-    -- Сохраняем предметы (до 4000)
+    -- Сохраняем только базовую информацию о предметах
     if meKnowledge.items then
         for i = 1, math.min(STORAGE_CONFIG.maxMemoryItems, #meKnowledge.items) do
             local item = meKnowledge.items[i]
@@ -121,7 +131,7 @@ local function saveMEKnowledge()
         end
     end
     
-    -- Сохраняем крафты (до 2000)
+    -- Сохраняем только базовую информацию о craftables
     if meKnowledge.craftables then
         for i = 1, math.min(STORAGE_CONFIG.maxCraftables, #meKnowledge.craftables) do
             local craftable = meKnowledge.craftables[i]
@@ -137,63 +147,114 @@ local function saveMEKnowledge()
         end
     end
     
-    -- Пытаемся сохранить с обработкой ошибок
-    for attempt = 1, 5 do
-        local file = io.open(meKnowledgeFile, "w")
+    -- Сохраняем только последние записи истории
+    if meKnowledge.craftHistory then
+        for i = math.max(1, #meKnowledge.craftHistory - 49), #meKnowledge.craftHistory do
+            if meKnowledge.craftHistory[i] then
+                local obs = meKnowledge.craftHistory[i]
+                table.insert(saveData.craftHistory, {
+                    cpuIndex = obs.cpuIndex,
+                    duration = obs.duration or 0,
+                    status = obs.status or "completed",
+                    craftedItems = obs.craftedItems or {},
+                    cpuName = obs.cpuName or "Без названия"
+                })
+            end
+        end
+    end
+    
+    -- Пытаемся сохранить в несколько файлов (основной и резервный)
+    local paths = {
+        meKnowledgeFile,
+        "/home/me_knowledge_backup.dat"
+    }
+    
+    for _, path in ipairs(paths) do
+        local file = io.open(path, "w")
         if file then
+            -- Пытаемся сохранить с обработкой ошибок
             local ok, serialized = pcall(serialization.serialize, saveData)
             if ok and serialized then
                 file:write(serialized)
                 file:close()
                 success = true
-                break
+                print("💾 Данные сохранены: " .. path)
             else
                 file:close()
-                print("⚠️ Попытка сохранения " .. attempt .. " не удалась")
+                print("❌ Ошибка сериализации для: " .. path)
             end
+        else
+            print("❌ Не удалось открыть файл: " .. path)
         end
-        os.sleep(0.3)
     end
     
     return success
 end
 
-local function loadConfig()
-    local file = io.open(configFile, "r")
+-- РЕЗЕРВНЫЙ МЕТОД СОХРАНЕНИЯ (только самые важные данные)
+local function saveEssentialData()
+    local essentialData = {
+        patterns = meKnowledge.patterns or {},
+        craftTimes = meKnowledge.craftTimes or {},
+        cpus = meKnowledge.cpus or {}
+    }
+    
+    local file = io.open("/essential_data.dat", "w")
     if file then
-        local data = file:read("*a")
+        file:write(serialization.serialize(essentialData))
         file:close()
-        if data and data ~= "" then
-            local success, loaded = pcall(serialization.unserialize, data)
-            if success and loaded then
-                craftDB = loaded
-                print("✅ Загружено автокрафтов: " .. tableLength(craftDB))
-                return true
-            else
-                print("❌ Ошибка загрузки конфига")
+        return true
+    end
+    return false
+end
+
+local function loadConfig()
+    local paths = {
+        configFile,
+        "/home/craft_config.dat"
+    }
+    
+    for _, path in ipairs(paths) do
+        local file = io.open(path, "r")
+        if file then
+            local data = file:read("*a")
+            file:close()
+            if data and data ~= "" then
+                local success, loaded = pcall(serialization.unserialize, data)
+                if success and loaded then
+                    craftDB = loaded
+                    print("✅ Загружено автокрафтов: " .. tableLength(craftDB))
+                    return true
+                end
             end
         end
     end
+    
     craftDB = {}
+    print("📁 Файл конфигурации не найден")
     return false
 end
 
 local function saveConfig()
+    local paths = {
+        configFile,
+        "/home/craft_config_backup.dat"
+    }
+    
     local success = false
-    for attempt = 1, 3 do
-        local file = io.open(configFile, "w")
+    for _, path in ipairs(paths) do
+        local file = io.open(path, "w")
         if file then
             local ok, serialized = pcall(serialization.serialize, craftDB)
             if ok and serialized then
                 file:write(serialized)
                 file:close()
                 success = true
-                break
+                print("💾 Конфиг сохранен: " .. path)
             else
                 file:close()
             end
         end
-        os.sleep(0.2)
     end
     return success
 end
@@ -281,6 +342,8 @@ local function analyzeMESystem()
             
             if chunkEnd % 200 == 0 then
                 print("   Обработано: " .. chunkEnd .. "/" .. itemCount)
+                -- Промежуточное сохранение
+                saveEssentialData()
             end
         end
         print("✅ Предметов проанализировано: " .. #meKnowledge.items)
@@ -338,6 +401,8 @@ local function analyzeMESystem()
             
             if chunkEnd % 100 == 0 then
                 print("   Исследовано крафтов: " .. researched .. "/" .. craftableCount)
+                -- Промежуточное сохранение
+                saveEssentialData()
             end
         end
         
@@ -347,7 +412,7 @@ local function analyzeMESystem()
         print("❌ Ошибка анализа крафтов")
     end
     
-    -- Анализ ЦП
+    -- Анализ ЦП (УЛУЧШЕННЫЙ - с информацией о памяти)
     print("⚡ Анализ процессоров крафта...")
     local success, cpus = pcall(me.getCraftingCPUs)
     if success and cpus then
@@ -367,7 +432,7 @@ local function analyzeMESystem()
         print("❌ Ошибка анализа процессоров")
     end
     
-    -- Финальное сохранение
+    -- Финальное сохранение ВСЕХ данных
     freeMemory()
     if saveMEKnowledge() then
         print("\n🎉 Анализ завершен успешно!")
@@ -378,6 +443,10 @@ local function analyzeMESystem()
         print("   ⚡ Процессоры: " .. #meKnowledge.cpus)
     else
         print("❌ Ошибка сохранения данных")
+        -- Пробуем сохранить хотя бы самое важное
+        if saveEssentialData() then
+            print("💾 Сохранены основные данные (паттерны и время крафта)")
+        end
     end
     
     print("\nНажмите Enter для продолжения...")
@@ -397,7 +466,7 @@ local function findCraftableSmart(itemID, itemName)
         for i, craftableInfo in ipairs(meKnowledge.craftables) do
             if craftableInfo.itemStack and craftableInfo.itemStack.name == itemID then
                 meKnowledge.patterns[itemID] = i
-                saveMEKnowledge()
+                saveEssentialData()
                 return i
             end
         end
@@ -410,7 +479,7 @@ local function findCraftableSmart(itemID, itemName)
                 local stack = craftableInfo.itemStack
                 if stack.label and stack.label:lower():find(itemName:lower(), 1, true) then
                     meKnowledge.patterns[itemID] = i
-                    saveMEKnowledge()
+                    saveEssentialData()
                     return i
                 end
             end
@@ -545,7 +614,7 @@ local function waitForCraft(itemID, targetAmount, craftName)
                 local actualTime = computer.uptime() - startTime
                 if not meKnowledge.craftTimes then meKnowledge.craftTimes = {} end
                 meKnowledge.craftTimes[itemID] = actualTime
-                saveMEKnowledge()
+                saveEssentialData()
             end
             
             return true
@@ -618,7 +687,7 @@ local function toggleAutoCraft()
     os.sleep(1)
 end
 
--- УЛУЧШЕННЫЙ ИНТЕРФЕЙС ДОБАВЛЕНИЯ АВТОКРАФТА
+-- УЛУЧШЕННЫЙ ИНТЕРФЕЙС ДОБАВЛЕНИЯ АВТОКРАФТА (С ИНФОРМАЦИЕЙ О ПАМЯТИ)
 local function addAutoCraft()
     term.clear()
     print("=== ➕ ДОБАВЛЕНИЕ АВТОКРАФТА ===")
@@ -681,12 +750,15 @@ local function addAutoCraft()
         return
     end
     
-    -- Показываем доступные ЦП
+    -- Показываем доступные ЦП С ИНФОРМАЦИЕЙ О ПАМЯТИ (ИСПРАВЛЕНО)
     print("\n⚡ Доступные процессоры:")
     if meKnowledge.cpus and #meKnowledge.cpus > 0 then
         for i, cpu in ipairs(meKnowledge.cpus) do
-            local status = cpu.busy and "ЗАНЯТ" or "СВОБОДЕН"
-            print("  #" .. i .. ": " .. status .. " (" .. (cpu.name or "ЦП") .. ")")
+            local status = cpu.busy and "🟡 ЗАНЯТ" or "🟢 СВОБОДЕН"
+            local storageMB = string.format("%.1f", (cpu.storage or 0) / 1024)
+            local cpuName = cpu.name or "ЦП #" .. i
+            print(string.format("  #%d: %s - %s (%.1f МБ)", 
+                cpu.index, status, cpuName, storageMB))
         end
     else
         print("  Нет данных о процессорах")
@@ -881,8 +953,9 @@ local function showMEKnowledge()
         if meKnowledge.cpus then
             for i, cpu in ipairs(meKnowledge.cpus) do
                 local status = cpu.busy and "🟡 ЗАНЯТ" or "🟢 СВОБОДЕН"
-                table.insert(dataToShow, string.format("  #%d: %s - %s (%d КБ)", 
-                    cpu.index, status, cpu.name or "ЦП", cpu.storage or 0))
+                local storageMB = string.format("%.1f", (cpu.storage or 0) / 1024)
+                table.insert(dataToShow, string.format("  #%d: %s - %s (%.1f МБ)", 
+                    cpu.index, status, cpu.name or "ЦП", storageMB))
             end
         end
         showPaginated(dataToShow, "⚡ ПРОЦЕССОРЫ КРАФТА", 35)
@@ -965,6 +1038,9 @@ local function formatDatabases()
     local deletedCount = 0
     if os.remove(configFile) then deletedCount = deletedCount + 1 end
     if os.remove(meKnowledgeFile) then deletedCount = deletedCount + 1 end
+    if os.remove("/home/craft_config.dat") then deletedCount = deletedCount + 1 end
+    if os.remove("/home/me_knowledge.dat") then deletedCount = deletedCount + 1 end
+    if os.remove("/essential_data.dat") then deletedCount = deletedCount + 1 end
     
     -- Создаем чистые базы
     if saveConfig() and saveMEKnowledge() then
@@ -1037,6 +1113,7 @@ local function mainMenu()
             -- Сохраняем данные перед выходом
             saveMEKnowledge()
             saveConfig()
+            saveEssentialData()
             print("👋 Выход из системы...")
             break
         end
