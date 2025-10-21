@@ -46,33 +46,71 @@ local function confirmAction(actionText)
     return (input == "y" or input == "yes" or input == "да")
 end
 
--- УЛУЧШЕННАЯ функция инициализации внешнего хранилища
+-- ИСПРАВЛЕННАЯ функция инициализации внешнего хранилища
 local function initExternalStorage()
     print("🔍 Поиск внешнего хранилища...")
     
-    -- Проверяем доступные диски через компоненты
-    local disks = {}
+    STORAGE_CONFIG.useExternalStorage = false
+    
+    -- Сначала проверяем доступные файловые системы через компоненты
+    local availableDisks = {}
     for address, type in component.list() do
         if type == "filesystem" and address ~= computer.tmpAddress() then
             local fs = component.proxy(address)
             if fs and fs.isReadOnly() == false then
                 local label = fs.getLabel() or "Без названия"
                 local space = math.floor(fs.spaceTotal() / 1024 / 1024)
-                table.insert(disks, {
+                local mountPath = "/mnt/" .. address:sub(1, 8)
+                
+                table.insert(availableDisks, {
                     address = address,
                     label = label,
                     space = space,
-                    path = "/mnt/" .. address:sub(1, 8)
+                    path = mountPath,
+                    fs = fs
                 })
             end
         end
     end
     
-    -- Проверяем стандартные точки монтирования
-    local mounts = {"/mnt/raid", "/mnt/external", "/mnt/disk", "/mnt/usb", "/mnt"}
+    -- Пробуем смонтировать найденные диски
+    for _, disk in ipairs(availableDisks) do
+        -- Создаем директорию для монтирования
+        os.execute("mkdir -p " .. disk.path .. " 2>/dev/null")
+        
+        -- Пробуем монтировать
+        local mountSuccess = os.execute("mount " .. disk.address .. " " .. disk.path .. " 2>/dev/null")
+        
+        if mountSuccess then
+            -- Проверяем доступность записи
+            local testFile = disk.path .. "/test_write.tmp"
+            local testWrite = io.open(testFile, "w")
+            if testWrite then
+                testWrite:write("test")
+                testWrite:close()
+                os.remove(testFile)
+                
+                STORAGE_CONFIG.externalStorage = disk.path .. "/"
+                STORAGE_CONFIG.useExternalStorage = true
+                print("✅ Внешнее хранилище подключено: " .. disk.path)
+                print("   📝 Метка: " .. disk.label)
+                print("   💾 Объем: " .. disk.space .. " МБ")
+                return true
+            else
+                -- Размонтируем если нет доступа на запись
+                os.execute("umount " .. disk.path .. " 2>/dev/null")
+            end
+        end
+    end
+    
+    -- Проверяем стандартные точки монтирования (только если они реально существуют)
+    local mounts = {"/mnt/raid", "/mnt/external", "/mnt/disk", "/mnt/usb", "/mnt/data"}
     for _, mount in ipairs(mounts) do
-        local checkCmd = "ls " .. mount .. " > /dev/null 2>&1"
-        if os.execute(checkCmd) then
+        -- Проверяем существование директории
+        local checkDir = io.open(mount, "r")
+        if checkDir then
+            checkDir:close()
+            
             -- Проверяем доступность записи
             local testFile = mount .. "/test_write.tmp"
             local testWrite = io.open(testFile, "w")
@@ -84,20 +122,6 @@ local function initExternalStorage()
                 STORAGE_CONFIG.externalStorage = mount .. "/"
                 STORAGE_CONFIG.useExternalStorage = true
                 print("✅ Внешнее хранилище найдено: " .. mount)
-                return true
-            end
-        end
-    end
-    
-    -- Если нашли диски, но нет точек монтирования, создаем
-    if #disks > 0 then
-        for _, disk in ipairs(disks) do
-            os.execute("mkdir -p " .. disk.path .. " 2>/dev/null")
-            local mountCmd = "mount " .. disk.address .. " " .. disk.path .. " 2>/dev/null"
-            if os.execute(mountCmd) then
-                STORAGE_CONFIG.externalStorage = disk.path .. "/"
-                STORAGE_CONFIG.useExternalStorage = true
-                print("✅ Внешнее хранилище подключено: " .. disk.path .. " (" .. disk.label .. ", " .. disk.space .. " МБ)")
                 return true
             end
         end
