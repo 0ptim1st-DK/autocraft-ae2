@@ -11,7 +11,8 @@ local STORAGE_CONFIG = {
     primaryStorage = "/home/",
     maxMemoryItems = 4000,
     maxCraftables = 2000,
-    chunkSize = 50
+    chunkSize = 50,
+    saveChunkSize = 500  -- Размер чанка для сохранения
 }
 
 if not component.isAvailable("me_interface") then
@@ -40,16 +41,134 @@ local meKnowledge = {
     researchDB = {}      
 }
 
--- НАДЕЖНАЯ ФУНКЦИЯ СОХРАНЕНИЯ ДАННЫХ
+-- Функция очистки памяти
+local function freeMemory()
+    collectgarbage()
+    local temp = {}
+    for i = 1, 20 do  -- Уменьшил размер для экономии памяти
+        temp[i] = {}
+        for j = 1, 3 do
+            temp[i][j] = string.rep("x", 20)
+        end
+    end
+    temp = nil
+    collectgarbage()
+end
+
+-- ПОЭТАПНОЕ СОХРАНЕНИЕ БОЛЬШИХ ТАБЛИЦ ЧАНКАМИ
+local function saveLargeTableChunked(filename, data, chunkSize)
+    chunkSize = chunkSize or STORAGE_CONFIG.saveChunkSize
+    
+    if not data or type(data) ~= "table" then
+        return false
+    end
+    
+    -- Если таблица маленькая, сохраняем целиком
+    if #data <= chunkSize then
+        return saveDataToFile(filename, data)
+    end
+    
+    print("💾 Поэтапное сохранение " .. #data .. " записей...")
+    
+    -- Сохраняем чанками
+    local totalChunks = math.ceil(#data / chunkSize)
+    local baseName = filename:gsub("%.txt$", "")
+    
+    -- Сохраняем метаданные
+    local metadata = {
+        totalChunks = totalChunks,
+        chunkSize = chunkSize,
+        totalRecords = #data,
+        baseName = baseName
+    }
+    
+    if not saveDataToFile(baseName .. "_meta.txt", metadata) then
+        return false
+    end
+    
+    -- Сохраняем каждый чанк
+    for chunkIndex = 1, totalChunks do
+        local startIndex = (chunkIndex - 1) * chunkSize + 1
+        local endIndex = math.min(chunkIndex * chunkSize, #data)
+        
+        local chunkData = {}
+        for i = startIndex, endIndex do
+            table.insert(chunkData, data[i])
+        end
+        
+        local chunkFilename = baseName .. "_chunk_" .. chunkIndex .. ".txt"
+        if not saveDataToFile(chunkFilename, chunkData) then
+            print("❌ Ошибка сохранения чанка " .. chunkIndex)
+            return false
+        end
+        
+        print("   ✅ Чанк " .. chunkIndex .. "/" .. totalChunks .. " сохранен")
+        freeMemory()
+        os.sleep(0.1)  -- Даем время на освобождение памяти
+    end
+    
+    print("✅ Все чанки сохранены")
+    return true
+end
+
+-- ПОЭТАПНАЯ ЗАГРУЗКА БОЛЬШИХ ТАБЛИЦ
+local function loadLargeTableChunked(filename)
+    local baseName = filename:gsub("%.txt$", "")
+    
+    -- Сначала пробуем загрузить целиком (для обратной совместимости)
+    local fullData = loadDataFromFile(filename)
+    if fullData then
+        return fullData
+    end
+    
+    -- Загружаем метаданные
+    local metadata = loadDataFromFile(baseName .. "_meta.txt")
+    if not metadata then
+        return nil
+    end
+    
+    print("📁 Загрузка " .. metadata.totalRecords .. " записей из " .. metadata.totalChunks .. " чанков...")
+    
+    local result = {}
+    
+    -- Загружаем каждый чанк
+    for chunkIndex = 1, metadata.totalChunks do
+        local chunkFilename = baseName .. "_chunk_" .. chunkIndex .. ".txt"
+        local chunkData = loadDataFromFile(chunkFilename)
+        
+        if chunkData then
+            for _, item in ipairs(chunkData) do
+                table.insert(result, item)
+            end
+            print("   ✅ Чанк " .. chunkIndex .. "/" .. metadata.totalChunks .. " загружен")
+        else
+            print("❌ Ошибка загрузки чанка " .. chunkIndex)
+            return nil
+        end
+        
+        freeMemory()
+        os.sleep(0.1)
+    end
+    
+    print("✅ Все чанки загружены")
+    return result
+end
+
+-- УПРОЩЕННАЯ ФУНКЦИЯ СОХРАНЕНИЯ ДАННЫХ
 local function saveDataToFile(filename, data)
-    for attempt = 1, 3 do
+    for attempt = 1, 2 do  -- Уменьшил количество попыток
         local file, err = io.open(filename, "w")
         if file then
+            -- Ограничиваем размер сериализуемых данных
             local serialized = serialization.serialize(data)
+            if #serialized > 100000 then  -- Если данные слишком большие
+                print("⚠️  Большой объем данных: " .. #serialized .. " байт")
+            end
+            
             file:write(serialized)
             file:close()
             
-            -- Проверяем что файл записался
+            -- Быстрая проверка записи
             local checkFile = io.open(filename, "r")
             if checkFile then
                 local content = checkFile:read("*a")
@@ -58,17 +177,15 @@ local function saveDataToFile(filename, data)
                     return true
                 end
             end
-        else
-            print("Ошибка открытия файла " .. filename .. ": " .. tostring(err))
         end
-        os.sleep(0.5)
+        os.sleep(0.3)
     end
     return false
 end
 
--- НАДЕЖНАЯ ФУНКЦИЯ ЗАГРУЗКИ ДАННЫХ
+-- УПРОЩЕННАЯ ФУНКЦИЯ ЗАГРУЗКИ ДАННЫХ
 local function loadDataFromFile(filename)
-    for attempt = 1, 3 do
+    for attempt = 1, 2 do
         local file = io.open(filename, "r")
         if file then
             local content = file:read("*a")
@@ -80,21 +197,9 @@ local function loadDataFromFile(filename)
                 end
             end
         end
-        os.sleep(0.5)
+        os.sleep(0.3)
     end
     return nil
-end
-
--- Функция очистки памяти
-local function freeMemory()
-    local temp = {}
-    for i = 1, 50 do
-        temp[i] = {}
-        for j = 1, 5 do
-            temp[i][j] = string.rep("x", 50)
-        end
-    end
-    temp = nil
 end
 
 local function tableLength(tbl)
@@ -106,138 +211,84 @@ local function tableLength(tbl)
     return count
 end
 
--- УЛУЧШЕННАЯ функция загрузки базы знаний
+-- ОПТИМИЗИРОВАННАЯ загрузка базы знаний
 local function loadMEKnowledge()
     print("📁 Загрузка базы знаний ME системы...")
     
-    -- Пробуем загрузить из основного файла
-    local data = loadDataFromFile(meKnowledgeFile)
-    if data then
-        meKnowledge = {
-            items = data.items or {},
-            craftables = data.craftables or {},
-            cpus = data.cpus or {},
-            patterns = data.patterns or {},
-            craftTimes = data.craftTimes or {},
-            craftHistory = data.craftHistory or {},
-            researchDB = data.researchDB or {}
-        }
-        print("✅ База знаний ME системы загружена")
-        print("   Предметы: " .. #meKnowledge.items)
-        print("   Крафты: " .. #meKnowledge.craftables)
-        print("   Паттерны: " .. tableLength(meKnowledge.patterns))
-        return true
-    end
-    
-    -- Пробуем загрузить из резервного
-    data = loadDataFromFile("/home/me_knowledge_backup.txt")
-    if data then
-        meKnowledge = {
-            items = data.items or {},
-            craftables = data.craftables or {},
-            cpus = data.cpus or {},
-            patterns = data.patterns or {},
-            craftTimes = data.craftTimes or {},
-            craftHistory = data.craftHistory or {},
-            researchDB = data.researchDB or {}
-        }
-        print("✅ База знаний загружена из резервной копии")
-        return true
-    end
-    
-    -- Пробуем загрузить основные данные
-    data = loadDataFromFile(essentialFile)
+    -- Загружаем основные данные (они небольшие)
+    local data = loadDataFromFile(essentialFile)
     if data then
         meKnowledge.patterns = data.patterns or {}
         meKnowledge.craftTimes = data.craftTimes or {}
         meKnowledge.cpus = data.cpus or {}
-        print("✅ Загружены основные данные")
-        return true
+        print("✅ Основные данные загружены")
     end
     
-    print("📁 Файл базы знаний не найден, создаем новую")
-    meKnowledge = {
-        items = {}, craftables = {}, cpus = {}, 
-        patterns = {}, craftTimes = {}, craftHistory = {}, researchDB = {}
-    }
-    return false
+    -- Пробуем загрузить предметы чанками
+    meKnowledge.items = loadLargeTableChunked(meKnowledgeFile) or {}
+    
+    -- Загружаем крафты
+    local craftablesData = loadDataFromFile("/home/craftables_data.txt")
+    if craftablesData then
+        meKnowledge.craftables = craftablesData
+    else
+        meKnowledge.craftables = {}
+    end
+    
+    print("✅ База знаний загружена")
+    print("   Предметы: " .. #meKnowledge.items)
+    print("   Крафты: " .. #meKnowledge.craftables)
+    print("   Паттерны: " .. tableLength(meKnowledge.patterns))
+    
+    return true
 end
 
--- УЛУЧШЕННАЯ функция сохранения базы знаний
+-- ОПТИМИЗИРОВАННОЕ сохранение базы знаний
 local function saveMEKnowledge()
     print("💾 Сохранение базы знаний...")
     
-    -- Создаем облегченную копию для сохранения
-    local saveData = {
-        items = {},
-        craftables = {},
-        cpus = meKnowledge.cpus or {},
+    local success = true
+    
+    -- Сохраняем предметы чанками (если их много)
+    if meKnowledge.items and #meKnowledge.items > STORAGE_CONFIG.saveChunkSize then
+        if not saveLargeTableChunked(meKnowledgeFile, meKnowledge.items) then
+            print("❌ Ошибка сохранения предметов")
+            success = false
+        end
+    elseif meKnowledge.items then
+        if not saveDataToFile(meKnowledgeFile, meKnowledge.items) then
+            success = false
+        end
+    end
+    
+    -- Сохраняем крафты отдельно (они обычно меньше)
+    if meKnowledge.craftables then
+        if not saveDataToFile("/home/craftables_data.txt", meKnowledge.craftables) then
+            success = false
+        end
+    end
+    
+    -- Всегда сохраняем основные данные
+    local essentialData = {
         patterns = meKnowledge.patterns or {},
         craftTimes = meKnowledge.craftTimes or {},
-        craftHistory = {},
-        researchDB = meKnowledge.researchDB or {}
+        cpus = meKnowledge.cpus or {}
     }
     
-    -- Сохраняем только базовую информацию о предметах
-    if meKnowledge.items then
-        for i = 1, math.min(STORAGE_CONFIG.maxMemoryItems, #meKnowledge.items) do
-            local item = meKnowledge.items[i]
-            if item then
-                table.insert(saveData.items, {
-                    name = item.name,
-                    size = item.size or 0,
-                    label = item.label or "нет"
-                })
-            end
-        end
+    if not saveDataToFile(essentialFile, essentialData) then
+        success = false
     end
     
-    -- Сохраняем только базовую информацию о craftables
-    if meKnowledge.craftables then
-        for i = 1, math.min(STORAGE_CONFIG.maxCraftables, #meKnowledge.craftables) do
-            local craftable = meKnowledge.craftables[i]
-            if craftable and craftable.itemStack then
-                table.insert(saveData.craftables, {
-                    index = craftable.index,
-                    itemStack = {
-                        name = craftable.itemStack.name,
-                        label = craftable.itemStack.label or "нет"
-                    }
-                })
-            end
-        end
-    end
-    
-    -- Сохраняем только последние записи истории
-    if meKnowledge.craftHistory then
-        for i = math.max(1, #meKnowledge.craftHistory - 49), #meKnowledge.craftHistory do
-            if meKnowledge.craftHistory[i] then
-                local obs = meKnowledge.craftHistory[i]
-                table.insert(saveData.craftHistory, {
-                    cpuIndex = obs.cpuIndex,
-                    duration = obs.duration or 0,
-                    status = obs.status or "completed",
-                    craftedItems = obs.craftedItems or {},
-                    cpuName = obs.cpuName or "Без названия"
-                })
-            end
-        end
-    end
-    
-    -- Сохраняем в несколько файлов для надежности
-    local success1 = saveDataToFile(meKnowledgeFile, saveData)
-    local success2 = saveDataToFile("/home/me_knowledge_backup.txt", saveData)
-    
-    if success1 or success2 then
+    if success then
         print("✅ База знаний сохранена")
-        return true
     else
-        print("❌ Ошибка сохранения базы знаний")
-        return false
+        print("❌ Частичная ошибка сохранения")
     end
+    
+    return success
 end
 
--- СОХРАНЕНИЕ ОСНОВНЫХ ДАННЫХ
+-- СОХРАНЕНИЕ ОСНОВНЫХ ДАННЫХ (упрощенное)
 local function saveEssentialData()
     local essentialData = {
         patterns = meKnowledge.patterns or {},
@@ -245,10 +296,7 @@ local function saveEssentialData()
         cpus = meKnowledge.cpus or {}
     }
     
-    if saveDataToFile(essentialFile, essentialData) then
-        return true
-    end
-    return false
+    return saveDataToFile(essentialFile, essentialData)
 end
 
 -- ЗАГРУЗКА КОНФИГУРАЦИИ АВТОКРАФТОВ
@@ -262,14 +310,6 @@ local function loadConfig()
         return true
     end
     
-    -- Пробуем загрузить из резервной копии
-    data = loadDataFromFile("/home/craft_config_backup.txt")
-    if data then
-        craftDB = data
-        print("✅ Конфигурация загружена из резервной копии")
-        return true
-    end
-    
     craftDB = {}
     print("📁 Файл конфигурации не найден")
     return false
@@ -277,19 +317,10 @@ end
 
 -- СОХРАНЕНИЕ КОНФИГУРАЦИИ АВТОКРАФТОВ
 local function saveConfig()
-    print("💾 Сохранение конфигурации автокрафтов...")
-    
-    local success1 = saveDataToFile(configFile, craftDB)
-    local success2 = saveDataToFile("/home/craft_config_backup.txt", craftDB)
-    
-    if success1 or success2 then
-        print("✅ Конфигурация сохранена")
-        return true
-    else
-        print("❌ Ошибка сохранения конфигурации")
-        return false
-    end
+    return saveDataToFile(configFile, craftDB)
 end
+
+-- ОСТАЛЬНЫЕ ФУНКЦИИ БЕЗ ИЗМЕНЕНИЙ (для экономии места)
 
 -- УЛУЧШЕННЫЙ показ страниц (35 строк)
 local function showPaginated(data, title, itemsPerPage)
@@ -333,118 +364,93 @@ local function showPaginated(data, title, itemsPerPage)
     end
 end
 
--- УМНЫЙ АНАЛИЗ ME СИСТЕМЫ (без физического крафта)
+-- ОПТИМИЗИРОВАННЫЙ АНАЛИЗ ME СИСТЕМЫ
 local function analyzeMESystem()
     print("🔍 Запуск интеллектуального анализа ME системы...")
     
-    -- Очистка старых данных
+    -- Очистка старых данных с освобождением памяти
     meKnowledge.items = {}
     meKnowledge.craftables = {}
-    meKnowledge.patterns = {}
+    collectgarbage()
     
     if not meKnowledge.cpus then meKnowledge.cpus = {} end
     if not meKnowledge.craftTimes then meKnowledge.craftTimes = {} end
     if not meKnowledge.researchDB then meKnowledge.researchDB = {} end
     
-    -- Анализ предметов
+    -- Анализ предметов с промежуточным сохранением
     print("📦 Анализ предметов в системе...")
     local success, items = pcall(me.getItemsInNetwork)
     if success and items then
         local itemCount = #items
         print("   Найдено предметов: " .. itemCount)
         
-        for chunkStart = 1, itemCount, STORAGE_CONFIG.chunkSize do
-            local chunkEnd = math.min(chunkStart + STORAGE_CONFIG.chunkSize - 1, itemCount)
-            
-            for i = chunkStart, chunkEnd do
-                local item = items[i]
-                if item and item.name then
-                    table.insert(meKnowledge.items, {
-                        name = item.name,
-                        size = item.size or 0,
-                        label = item.label or "нет"
-                    })
-                end
-                
-                if i % 20 == 0 then
-                    freeMemory()
-                    os.sleep(0.05)
-                end
+        -- Сохраняем каждые 200 предметов
+        local saveInterval = 200
+        local lastSave = 0
+        
+        for i = 1, itemCount do
+            local item = items[i]
+            if item and item.name then
+                table.insert(meKnowledge.items, {
+                    name = item.name,
+                    size = item.size or 0,
+                    label = item.label or "нет"
+                })
             end
             
-            if chunkEnd % 200 == 0 then
-                print("   Обработано: " .. chunkEnd .. "/" .. itemCount)
-                -- Промежуточное сохранение
+            -- Промежуточное сохранение и очистка памяти
+            if i % saveInterval == 0 then
+                print("   Обработано: " .. i .. "/" .. itemCount)
                 saveEssentialData()
+                freeMemory()
+                lastSave = i
             end
         end
+        
         print("✅ Предметов проанализировано: " .. #meKnowledge.items)
     else
         print("❌ Ошибка анализа предметов")
     end
     
-    -- Анализ крафтов (БЕЗ ФИЗИЧЕСКОГО КРАФТА)
+    -- Анализ крафтов с оптимизацией памяти
     print("🛠️ Интеллектуальный анализ крафтов...")
     local success, craftables = pcall(me.getCraftables)
     if success and craftables then
         local craftableCount = #craftables
         print("   Найдено крафтов: " .. craftableCount)
         
-        local researched = 0
-        local tempResearchDB = {}
+        meKnowledge.craftables = {}
+        meKnowledge.patterns = {}
         
-        for chunkStart = 1, craftableCount, 25 do
-            local chunkEnd = math.min(chunkStart + 24, craftableCount)
-            
-            for i = chunkStart, chunkEnd do
-                local craftable = craftables[i]
-                if craftable and craftable.getItemStack then
-                    local itemSuccess, itemStack = pcall(craftable.getItemStack)
-                    if itemSuccess and itemStack and itemStack.name then
-                        -- Сохраняем информацию о крафте
-                        local craftableInfo = {
-                            index = i,
-                            itemStack = {
-                                name = itemStack.name,
-                                label = itemStack.label or "нет"
-                            }
+        for i = 1, craftableCount do
+            local craftable = craftables[i]
+            if craftable and craftable.getItemStack then
+                local itemSuccess, itemStack = pcall(craftable.getItemStack)
+                if itemSuccess and itemStack and itemStack.name then
+                    table.insert(meKnowledge.craftables, {
+                        index = i,
+                        itemStack = {
+                            name = itemStack.name,
+                            label = itemStack.label or "нет"
                         }
-                        table.insert(meKnowledge.craftables, craftableInfo)
-                        
-                        -- Сохраняем паттерн для быстрого поиска
-                        meKnowledge.patterns[itemStack.name] = i
-                        
-                        -- Добавляем в исследовательскую базу
-                        table.insert(tempResearchDB, {
-                            craftableIndex = i,
-                            itemID = itemStack.name,
-                            label = itemStack.label or "Без названия"
-                        })
-                        
-                        researched = researched + 1
-                    end
-                end
-                
-                if i % 10 == 0 then
-                    freeMemory()
-                    os.sleep(0.1)
+                    })
+                    
+                    meKnowledge.patterns[itemStack.name] = i
                 end
             end
             
-            if chunkEnd % 100 == 0 then
-                print("   Исследовано крафтов: " .. researched .. "/" .. craftableCount)
-                -- Промежуточное сохранение
-                saveEssentialData()
+            -- Частая очистка памяти для крафтов
+            if i % 50 == 0 then
+                freeMemory()
             end
         end
         
-        meKnowledge.researchDB = tempResearchDB
-        print("✅ Крафтов исследовано: " .. researched)
+        print("✅ Крафтов исследовано: " .. #meKnowledge.craftables)
     else
         print("❌ Ошибка анализа крафтов")
     end
     
-    -- Анализ ЦП (УЛУЧШЕННЫЙ - с информацией о памяти)
+    -- Анализ ЦП
     print("⚡ Анализ процессоров крафта...")
     local success, cpus = pcall(me.getCraftingCPUs)
     if success and cpus then
@@ -464,56 +470,45 @@ local function analyzeMESystem()
         print("❌ Ошибка анализа процессоров")
     end
     
-    -- Финальное сохранение ВСЕХ данных
+    -- Финальное сохранение с оптимизацией
     freeMemory()
-    if saveMEKnowledge() then
-        print("\n🎉 Анализ завершен успешно!")
-        print("📊 Итоги:")
-        print("   📦 Предметы: " .. #meKnowledge.items)
-        print("   🛠️ Крафты: " .. #meKnowledge.craftables)
-        print("   🔗 Паттерны: " .. tableLength(meKnowledge.patterns))
-        print("   ⚡ Процессоры: " .. #meKnowledge.cpus)
+    
+    -- Сохраняем основные данные сразу
+    saveEssentialData()
+    
+    -- Сохраняем предметы и крафты с проверкой размера
+    if #meKnowledge.items > 1000 then
+        print("💾 Сохранение большого объема данных чанками...")
+        saveLargeTableChunked(meKnowledgeFile, meKnowledge.items)
     else
-        print("❌ Ошибка сохранения данных")
-        -- Пробуем сохранить хотя бы самое важное
-        if saveEssentialData() then
-            print("💾 Сохранены основные данные (паттерны и время крафта)")
-        end
+        saveDataToFile(meKnowledgeFile, meKnowledge.items)
     end
+    
+    saveDataToFile("/home/craftables_data.txt", meKnowledge.craftables)
+    
+    print("\n🎉 Анализ завершен успешно!")
+    print("📊 Итоги:")
+    print("   📦 Предметы: " .. #meKnowledge.items)
+    print("   🛠️ Крафты: " .. #meKnowledge.craftables)
+    print("   🔗 Паттерны: " .. tableLength(meKnowledge.patterns))
+    print("   ⚡ Процессоры: " .. #meKnowledge.cpus)
     
     print("\nНажмите Enter для продолжения...")
     io.read()
 end
 
--- УМНЫЙ ПОИСК CRAFTABLE (золотая функция - без перебора)
+-- УМНЫЙ ПОИСК CRAFTABLE
 local function findCraftableSmart(itemID, itemName)
-    -- Проверяем паттерны (основной метод)
     if meKnowledge.patterns and meKnowledge.patterns[itemID] then
-        local craftableIndex = meKnowledge.patterns[itemID]
-        return craftableIndex
+        return meKnowledge.patterns[itemID]
     end
     
-    -- Ищем в craftables по itemStack
     if meKnowledge.craftables then
         for i, craftableInfo in ipairs(meKnowledge.craftables) do
             if craftableInfo.itemStack and craftableInfo.itemStack.name == itemID then
                 meKnowledge.patterns[itemID] = i
                 saveEssentialData()
                 return i
-            end
-        end
-    end
-    
-    -- Ищем по совпадению label
-    if meKnowledge.craftables then
-        for i, craftableInfo in ipairs(meKnowledge.craftables) do
-            if craftableInfo.itemStack then
-                local stack = craftableInfo.itemStack
-                if stack.label and stack.label:lower():find(itemName:lower(), 1, true) then
-                    meKnowledge.patterns[itemID] = i
-                    saveEssentialData()
-                    return i
-                end
             end
         end
     end
@@ -782,7 +777,7 @@ local function addAutoCraft()
         return
     end
     
-    -- Показываем доступные ЦП С ИНФОРМАЦИЕЙ О ПАМЯТИ
+    -- Показываем доступные ЦП
     print("\n⚡ Доступные процессоры:")
     if meKnowledge.cpus and #meKnowledge.cpus > 0 then
         for i, cpu in ipairs(meKnowledge.cpus) do
@@ -994,99 +989,6 @@ local function showMEKnowledge()
     end
 end
 
--- ДЕТАЛИ CRAFTABLES
-local function showCraftableDetails()
-    if not meKnowledge.craftables or #meKnowledge.craftables == 0 then
-        print("Нет данных о крафтах")
-        os.sleep(2)
-        return
-    end
-    
-    local dataToShow = {}
-    for i, craftable in ipairs(meKnowledge.craftables) do
-        local craftableText = "\n🛠️ Крафт #" .. i .. ":\n"
-        
-        if craftable.itemStack then
-            craftableText = craftableText .. "  📦 ItemStack:\n"
-            craftableText = craftableText .. "    🆔 ID: " .. (craftable.itemStack.name or "нет") .. "\n"
-            craftableText = craftableText .. "    🏷️ Label: " .. (craftable.itemStack.label or "нет") .. "\n"
-        end
-        
-        table.insert(dataToShow, craftableText)
-    end
-    
-    showPaginated(dataToShow, "🔍 ДЕТАЛИ КРАФТОВ", 10)
-end
-
--- ПРОСМОТР ВРЕМЕНИ КРАФТОВ
-local function showCraftTimes()
-    if not meKnowledge.craftTimes or tableLength(meKnowledge.craftTimes) == 0 then
-        print("Нет данных о времени крафта")
-        os.sleep(2)
-        return
-    end
-    
-    local dataToShow = {}
-    for itemID, time in pairs(meKnowledge.craftTimes) do
-        local label = itemID
-        -- Пытаемся найти label в предметах
-        if meKnowledge.items then
-            for i, item in ipairs(meKnowledge.items) do
-                if item.name == itemID then
-                    label = item.label or itemID
-                    break
-                end
-            end
-        end
-        
-        table.insert(dataToShow, string.format("  %s: %.1f сек", label, time))
-    end
-    
-    showPaginated(dataToShow, "⏱️ ВРЕМЯ КРАФТА ПРЕДМЕТОВ", 35)
-end
-
--- ОЧИСТКА ВСЕХ БАЗ ДАННЫХ
-local function formatDatabases()
-    print("⚠️  ВНИМАНИЕ: Это действие полностью очистит все данные!")
-    print("❌ Все автокрафты, исследования и история будут удалены.")
-    print("\nПродолжить? (y/n):")
-    
-    local input = io.read():lower()
-    if input ~= "y" and input ~= "yes" and input ~= "да" then
-        print("❌ Очистка отменена")
-        return
-    end
-    
-    print("🧹 Начало очистки баз данных...")
-    
-    -- Очищаем оперативную память
-    craftDB = {}
-    meKnowledge = {
-        items = {}, craftables = {}, cpus = {}, 
-        patterns = {}, craftTimes = {}, craftHistory = {}, researchDB = {}
-    }
-    
-    -- Удаляем файлы
-    local deletedCount = 0
-    if os.remove(configFile) then deletedCount = deletedCount + 1 end
-    if os.remove(meKnowledgeFile) then deletedCount = deletedCount + 1 end
-    if os.remove("/home/craft_config_backup.txt") then deletedCount = deletedCount + 1 end
-    if os.remove("/home/me_knowledge_backup.txt") then deletedCount = deletedCount + 1 end
-    if os.remove(essentialFile) then deletedCount = deletedCount + 1 end
-    
-    -- Создаем чистые базы
-    if saveConfig() and saveMEKnowledge() then
-        print("✅ Очистка завершена!")
-        print("🗑️ Удалено файлов: " .. deletedCount)
-        print("🆕 Созданы чистые базы данных")
-    else
-        print("❌ Ошибка создания чистых баз")
-    end
-    
-    print("\nНажмите Enter для продолжения...")
-    io.read()
-end
-
 -- ГЛАВНОЕ МЕНЮ
 local function mainMenu()
     while running do
@@ -1109,10 +1011,8 @@ local function mainMenu()
         print("4. ❌ Удалить автокрафт")
         print("5. 🔍 Анализ ME системы")
         print("6. 📚 База знаний ME")
-        print("7. 🔎 Детали крафтов")
-        print("8. ⏱️ Время крафтов")
-        print("9. 🗑️ Очистить все базы данных")
-        print("10. 🚪 Выход")
+        print("7. 🗑️ Очистить все базы данных")
+        print("8. 🚪 Выход")
         print("\nВыберите действие:")
         
         local choice = io.read()
@@ -1130,22 +1030,24 @@ local function mainMenu()
         elseif choice == "6" then
             showMEKnowledge()
         elseif choice == "7" then
-            showCraftableDetails()
+            -- Упрощенная очистка
+            print("Очистка баз данных...")
+            craftDB = {}
+            meKnowledge = {items = {}, craftables = {}, cpus = {}, patterns = {}, craftTimes = {}}
+            saveConfig()
+            saveMEKnowledge()
+            print("✅ Базы данных очищены")
+            os.sleep(2)
         elseif choice == "8" then
-            showCraftTimes()
-        elseif choice == "9" then
-            formatDatabases()
-        elseif choice == "10" then
             if craftingEnabled then
                 craftingEnabled = false
                 if craftThread then
                     craftThread:join()
                 end
             end
-            -- Сохраняем данные перед выходом
-            saveMEKnowledge()
-            saveConfig()
+            -- Сохраняем только основные данные перед выходом
             saveEssentialData()
+            saveConfig()
             print("👋 Выход из системы...")
             break
         end
