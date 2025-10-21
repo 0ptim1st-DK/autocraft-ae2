@@ -10,7 +10,7 @@ local STORAGE_CONFIG = {
     primaryStorage = "/home/",
     externalStorage = "/mnt/raid/",
     maxMemoryItems = 5000,
-    chunkSize = 100,
+    chunkSize = 25,
     useExternalStorage = false
 }
 
@@ -534,7 +534,7 @@ local function analyzeMESystem()
             end
             
             -- Промежуточное сохранение каждые 100 craftables
-            if chunkEnd % 100 == 0 then
+            if chunkEnd % 25 == 0 then
                 if saveMEKnowledge() then
                     print("   💾 Промежуточное сохранение craftables...")
                 end
@@ -634,7 +634,7 @@ local function researchAllCrafts()
         end
         
         -- Промежуточное сохранение каждые 100 исследованных крафтов
-        if chunkEnd % 100 == 0 then
+        if chunkEnd % 25 == 0 then
             meKnowledge.researchDB = tempResearchDB
             if saveMEKnowledge() then
                 print("   💾 Промежуточное сохранение исследований...")
@@ -1632,3 +1632,4 @@ print("💾 Хранилище: " .. (STORAGE_CONFIG.useExternalStorage and "�
 os.sleep(2)
 
 mainMenu()
+
