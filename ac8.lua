@@ -59,7 +59,7 @@ local function tableLength(tbl)
     return count
 end
 
--- УЛУЧШЕННАЯ функция загрузки базы знаний (из ac60.lua)
+-- УЛУЧШЕННАЯ функция загрузки базы знаний (без логов ошибок)
 local function loadMEKnowledge()
     local paths = {
         meKnowledgeFile,
@@ -83,17 +83,12 @@ local function loadMEKnowledge()
                         craftHistory = loaded.craftHistory or {},
                         researchDB = loaded.researchDB or {}
                     }
-                    print("✅ База знаний ME системы загружена")
-                    print("   Предметы: " .. #meKnowledge.items)
-                    print("   Крафты: " .. #meKnowledge.craftables)
-                    print("   Паттерны: " .. tableLength(meKnowledge.patterns))
                     return true
                 end
             end
         end
     end
     
-    print("📁 Файл базы знаний не найден или поврежден")
     meKnowledge = {
         items = {}, craftables = {}, cpus = {}, 
         patterns = {}, craftTimes = {}, craftHistory = {}, researchDB = {}
@@ -101,12 +96,10 @@ local function loadMEKnowledge()
     return false
 end
 
--- УЛУЧШЕННАЯ функция сохранения базы знаний (надежный метод)
+-- УЛУЧШЕННАЯ функция сохранения базы знаний (без логов)
 local function saveMEKnowledge()
-    -- Сохраняем данные небольшими частями
     local success = false
     
-    -- Создаем облегченную копию для сохранения
     local saveData = {
         items = {},
         craftables = {},
@@ -117,7 +110,6 @@ local function saveMEKnowledge()
         researchDB = meKnowledge.researchDB or {}
     }
     
-    -- Сохраняем только базовую информацию о предметах
     if meKnowledge.items then
         for i = 1, math.min(STORAGE_CONFIG.maxMemoryItems, #meKnowledge.items) do
             local item = meKnowledge.items[i]
@@ -131,7 +123,6 @@ local function saveMEKnowledge()
         end
     end
     
-    -- Сохраняем только базовую информацию о craftables
     if meKnowledge.craftables then
         for i = 1, math.min(STORAGE_CONFIG.maxCraftables, #meKnowledge.craftables) do
             local craftable = meKnowledge.craftables[i]
@@ -147,7 +138,6 @@ local function saveMEKnowledge()
         end
     end
     
-    -- Сохраняем только последние записи истории
     if meKnowledge.craftHistory then
         for i = math.max(1, #meKnowledge.craftHistory - 49), #meKnowledge.craftHistory do
             if meKnowledge.craftHistory[i] then
@@ -163,7 +153,6 @@ local function saveMEKnowledge()
         end
     end
     
-    -- Пытаемся сохранить в несколько файлов (основной и резервный)
     local paths = {
         meKnowledgeFile,
         "/home/me_knowledge_backup.dat"
@@ -172,19 +161,14 @@ local function saveMEKnowledge()
     for _, path in ipairs(paths) do
         local file = io.open(path, "w")
         if file then
-            -- Пытаемся сохранить с обработкой ошибок
             local ok, serialized = pcall(serialization.serialize, saveData)
             if ok and serialized then
                 file:write(serialized)
                 file:close()
                 success = true
-                print("💾 Данные сохранены: " .. path)
             else
                 file:close()
-                print("❌ Ошибка сериализации для: " .. path)
             end
-        else
-            print("❌ Не удалось открыть файл: " .. path)
         end
     end
     
@@ -223,7 +207,6 @@ local function loadConfig()
                 local success, loaded = pcall(serialization.unserialize, data)
                 if success and loaded then
                     craftDB = loaded
-                    print("✅ Загружено автокрафтов: " .. tableLength(craftDB))
                     return true
                 end
             end
@@ -231,7 +214,6 @@ local function loadConfig()
     end
     
     craftDB = {}
-    print("📁 Файл конфигурации не найден")
     return false
 end
 
@@ -250,7 +232,6 @@ local function saveConfig()
                 file:write(serialized)
                 file:close()
                 success = true
-                print("💾 Конфиг сохранен: " .. path)
             else
                 file:close()
             end
@@ -305,7 +286,6 @@ end
 local function analyzeMESystem()
     print("🔍 Запуск интеллектуального анализа ME системы...")
     
-    -- Очистка старых данных
     meKnowledge.items = {}
     meKnowledge.craftables = {}
     meKnowledge.patterns = {}
@@ -314,7 +294,6 @@ local function analyzeMESystem()
     if not meKnowledge.craftTimes then meKnowledge.craftTimes = {} end
     if not meKnowledge.researchDB then meKnowledge.researchDB = {} end
     
-    -- Анализ предметов
     print("📦 Анализ предметов в системе...")
     local success, items = pcall(me.getItemsInNetwork)
     if success and items then
@@ -342,7 +321,6 @@ local function analyzeMESystem()
             
             if chunkEnd % 200 == 0 then
                 print("   Обработано: " .. chunkEnd .. "/" .. itemCount)
-                -- Промежуточное сохранение
                 saveEssentialData()
             end
         end
@@ -351,7 +329,6 @@ local function analyzeMESystem()
         print("❌ Ошибка анализа предметов")
     end
     
-    -- Анализ крафтов (БЕЗ ФИЗИЧЕСКОГО КРАФТА)
     print("🛠️ Интеллектуальный анализ крафтов...")
     local success, craftables = pcall(me.getCraftables)
     if success and craftables then
@@ -369,7 +346,6 @@ local function analyzeMESystem()
                 if craftable and craftable.getItemStack then
                     local itemSuccess, itemStack = pcall(craftable.getItemStack)
                     if itemSuccess and itemStack and itemStack.name then
-                        -- Сохраняем информацию о крафте
                         local craftableInfo = {
                             index = i,
                             itemStack = {
@@ -379,10 +355,8 @@ local function analyzeMESystem()
                         }
                         table.insert(meKnowledge.craftables, craftableInfo)
                         
-                        -- Сохраняем паттерн для быстрого поиска
                         meKnowledge.patterns[itemStack.name] = i
                         
-                        -- Добавляем в исследовательскую базу
                         table.insert(tempResearchDB, {
                             craftableIndex = i,
                             itemID = itemStack.name,
@@ -401,7 +375,6 @@ local function analyzeMESystem()
             
             if chunkEnd % 100 == 0 then
                 print("   Исследовано крафтов: " .. researched .. "/" .. craftableCount)
-                -- Промежуточное сохранение
                 saveEssentialData()
             end
         end
@@ -412,7 +385,6 @@ local function analyzeMESystem()
         print("❌ Ошибка анализа крафтов")
     end
     
-    -- Анализ ЦП (УЛУЧШЕННЫЙ - с информацией о памяти)
     print("⚡ Анализ процессоров крафта...")
     local success, cpus = pcall(me.getCraftingCPUs)
     if success and cpus then
@@ -432,22 +404,15 @@ local function analyzeMESystem()
         print("❌ Ошибка анализа процессоров")
     end
     
-    -- Финальное сохранение ВСЕХ данных
     freeMemory()
-    if saveMEKnowledge() then
-        print("\n🎉 Анализ завершен успешно!")
-        print("📊 Итоги:")
-        print("   📦 Предметы: " .. #meKnowledge.items)
-        print("   🛠️ Крафты: " .. #meKnowledge.craftables)
-        print("   🔗 Паттерны: " .. tableLength(meKnowledge.patterns))
-        print("   ⚡ Процессоры: " .. #meKnowledge.cpus)
-    else
-        print("❌ Ошибка сохранения данных")
-        -- Пробуем сохранить хотя бы самое важное
-        if saveEssentialData() then
-            print("💾 Сохранены основные данные (паттерны и время крафта)")
-        end
-    end
+    saveMEKnowledge()
+    
+    print("\n🎉 Анализ завершен успешно!")
+    print("📊 Итоги:")
+    print("   📦 Предметы: " .. #meKnowledge.items)
+    print("   🛠️ Крафты: " .. #meKnowledge.craftables)
+    print("   🔗 Паттерны: " .. tableLength(meKnowledge.patterns))
+    print("   ⚡ Процессоры: " .. #meKnowledge.cpus)
     
     print("\nНажмите Enter для продолжения...")
     io.read()
@@ -455,13 +420,11 @@ end
 
 -- УМНЫЙ ПОИСК CRAFTABLE (золотая функция - без перебора)
 local function findCraftableSmart(itemID, itemName)
-    -- Проверяем паттерны (основной метод)
     if meKnowledge.patterns and meKnowledge.patterns[itemID] then
         local craftableIndex = meKnowledge.patterns[itemID]
         return craftableIndex
     end
     
-    -- Ищем в craftables по itemStack
     if meKnowledge.craftables then
         for i, craftableInfo in ipairs(meKnowledge.craftables) do
             if craftableInfo.itemStack and craftableInfo.itemStack.name == itemID then
@@ -472,7 +435,6 @@ local function findCraftableSmart(itemID, itemName)
         end
     end
     
-    -- Ищем по совпадению label
     if meKnowledge.craftables then
         for i, craftableInfo in ipairs(meKnowledge.craftables) do
             if craftableInfo.itemStack then
@@ -693,7 +655,6 @@ local function addAutoCraft()
     print("=== ➕ ДОБАВЛЕНИЕ АВТОКРАФТА ===")
     print()
     
-    -- Показываем последние 10 предметов
     print("📦 Последние предметы в системе:")
     local recentItems = {}
     if meKnowledge.items and #meKnowledge.items > 0 then
@@ -750,7 +711,6 @@ local function addAutoCraft()
         return
     end
     
-    -- Показываем доступные ЦП С ИНФОРМАЦИЕЙ О ПАМЯТИ (ИСПРАВЛЕНО)
     print("\n⚡ Доступные процессоры:")
     if meKnowledge.cpus and #meKnowledge.cpus > 0 then
         for i, cpu in ipairs(meKnowledge.cpus) do
@@ -801,7 +761,6 @@ local function addAutoCraft()
         print("Установлен интервал 5 секунд")
     end
     
-    -- Умный поиск крафта
     local craftableIndex = findCraftableSmart(itemID, craftName)
     
     craftDB[craftName] = {
@@ -997,7 +956,6 @@ local function showCraftTimes()
     local dataToShow = {}
     for itemID, time in pairs(meKnowledge.craftTimes) do
         local label = itemID
-        -- Пытаемся найти label в предметах
         if meKnowledge.items then
             for i, item in ipairs(meKnowledge.items) do
                 if item.name == itemID then
@@ -1027,14 +985,12 @@ local function formatDatabases()
     
     print("🧹 Начало очистки баз данных...")
     
-    -- Очищаем оперативную память
     craftDB = {}
     meKnowledge = {
         items = {}, craftables = {}, cpus = {}, 
         patterns = {}, craftTimes = {}, craftHistory = {}, researchDB = {}
     }
     
-    -- Удаляем файлы
     local deletedCount = 0
     if os.remove(configFile) then deletedCount = deletedCount + 1 end
     if os.remove(meKnowledgeFile) then deletedCount = deletedCount + 1 end
@@ -1042,7 +998,6 @@ local function formatDatabases()
     if os.remove("/home/me_knowledge.dat") then deletedCount = deletedCount + 1 end
     if os.remove("/essential_data.dat") then deletedCount = deletedCount + 1 end
     
-    -- Создаем чистые базы
     if saveConfig() and saveMEKnowledge() then
         print("✅ Очистка завершена!")
         print("🗑️ Удалено файлов: " .. deletedCount)
@@ -1062,13 +1017,12 @@ local function mainMenu()
         print("=== 🧠 УМНАЯ СИСТЕМА ПОДДЕРЖКИ АВТОКРАФТА ===")
         print()
         
-        -- Статус системы (ИСПРАВЛЕННАЯ СТРОКА)
         local statusIcon = craftingEnabled and "🟢" or "🔴"
         print(statusIcon .. " Поддержка автокрафта: " .. (craftingEnabled and "ВКЛЮЧЕНА" or "ВЫКЛЮЧЕНА"))
         print("📊 Автокрафтов: " .. tableLength(craftDB))
         print("📚 База знаний: " .. (meKnowledge.items and #meKnowledge.items or 0) .. " предметов, " .. 
               (meKnowledge.craftables and #meKnowledge.craftables or 0) .. " крафтов")
-        print("⏱️ Время крафта: " .. tableLength(meKnowledge.craftTimes or {}) .. " записей")
+        print("⚡ Процессоры: " .. (meKnowledge.cpus and #meKnowledge.cpus or 0) .. " шт.")
         
         print("\n" .. string.rep("=", 40))
         print("1. " .. (craftingEnabled and "🛑 Остановить" or "🚀 Запустить") .. " поддержку автокрафта")
@@ -1110,7 +1064,6 @@ local function mainMenu()
                     craftThread:join()
                 end
             end
-            -- Сохраняем данные перед выходом
             saveMEKnowledge()
             saveConfig()
             saveEssentialData()
@@ -1125,7 +1078,6 @@ print("Загрузка умной системы поддержки авток�
 loadConfig()
 loadMEKnowledge()
 
--- Автоанализ только если база действительно пуста
 if (not meKnowledge.items or #meKnowledge.items == 0) and running then
     print("🔄 База знаний пуста, выполняется первоначальный анализ...")
     analyzeMESystem()
@@ -1133,7 +1085,7 @@ else
     print("✅ Система готова к работе!")
     print("📊 Загружено автокрафтов: " .. tableLength(craftDB))
     print("📚 База знаний: " .. (meKnowledge.items and #meKnowledge.items or 0) .. " предметов")
-    print("⏱️ Время крафта: " .. tableLength(meKnowledge.craftTimes or {}) .. " записей")
+    print("⚡ Процессоры: " .. (meKnowledge.cpus and #meKnowledge.cpus or 0) .. " шт.")
     os.sleep(2)
 end
 
