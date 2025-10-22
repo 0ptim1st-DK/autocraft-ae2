@@ -1123,29 +1123,18 @@ end
 -- ИНИЦИАЛИЗАЦИЯ СИСТЕМЫ
 print("Загрузка умной системы поддержки автокрафта...")
 loadConfig()
-local knowledgeLoaded = loadMEKnowledge()
+loadMEKnowledge()
 
--- УЛУЧШЕННАЯ ЛОГИКА АВТОАНАЛИЗА С ПОДТВЕРЖДЕНИЕМ
-if knowledgeLoaded and meKnowledge.items and #meKnowledge.items > 0 and meKnowledge.craftables and #meKnowledge.craftables > 0 then
-    -- База знаний загружена успешно и содержит данные - сразу переходим в меню
+-- Автоанализ только если база действительно пуста
+if (not meKnowledge.items or #meKnowledge.items == 0) and running then
+    print("🔄 База знаний пуста, выполняется первоначальный анализ...")
+    analyzeMESystem()
+else
     print("✅ Система готова к работе!")
     print("📊 Загружено автокрафтов: " .. tableLength(craftDB))
     print("📚 База знаний: " .. (meKnowledge.items and #meKnowledge.items or 0) .. " предметов")
     print("⏱️ Время крафта: " .. tableLength(meKnowledge.craftTimes or {}) .. " записей")
     os.sleep(2)
-    mainMenu()
-else
-    -- База знаний пуста или повреждена - предлагаем анализ
-    print("\n📁 База знаний ME системы не обнаружена или повреждена")
-    print("🔍 Провести анализ ME системы? (y/n)")
-    
-    local input = io.read():lower()
-    if input == "y" or input == "yes" or input == "да" then
-        analyzeMESystem()
-        mainMenu()
-    else
-        print("🚪 Переход в главное меню...")
-        os.sleep(1)
-        mainMenu()
-    end
 end
+
+mainMenu()
